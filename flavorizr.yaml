@@ -1,0 +1,33 @@
+# flutter_flavorizr: dev + prod for Android and iOS only. Dart entry points (lib/main_*.dart) and
+# the splash (flutter_native_splash) are ours, so flutter:app/pages/main and launch screens are skipped.
+#   dart run flutter_flavorizr
+ide: idea
+instructions:
+  - assets:download
+  - assets:extract
+  - android:flavorizrGradle
+  - android:buildGradle
+  - android:androidManifest
+  - flutter:flavors
+  - ios:podfile
+  - ios:xcconfig
+  - ios:buildTargets
+  - ios:schema
+  - ios:plist
+  - ide:config
+  - assets:clean
+flavors:
+  dev:
+    app:
+      name: "Nubi Sport Dev"
+    android:
+      applicationId: "com.hafizbahtiar.nubisport.dev"
+    ios:
+      bundleId: "com.hafizbahtiar.nubisport.dev"
+  prod:
+    app:
+      name: "Nubi Sport"
+    android:
+      applicationId: "com.hafizbahtiar.nubisport"
+    ios:
+      bundleId: "com.hafizbahtiar.nubisport"
