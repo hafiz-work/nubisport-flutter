@@ -14,6 +14,7 @@ class CachedUsers extends Table {
   TextColumn get name => text()();
   TextColumn get email => text()();
   TextColumn get role => text()();
+
   /// `{ "nubi": "ahli" }` as JSON - per-app roles from the API.
   TextColumn get appsJson => text().withDefault(const Constant('{}'))();
   DateTimeColumn get updatedAt => dateTime()();
@@ -31,10 +32,10 @@ class AppDatabase extends _$AppDatabase {
 
   /// Drop every account-owned row (logout, account switch).
   Future<void> clearAccountData() => transaction(() async {
-        for (final table in allTables) {
-          await delete(table).go();
-        }
-      });
+    for (final table in allTables) {
+      await delete(table).go();
+    }
+  });
 }
 
 final appDatabaseProvider = Provider<AppDatabase>((ref) {

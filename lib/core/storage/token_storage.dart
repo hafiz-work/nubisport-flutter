@@ -19,12 +19,13 @@ abstract interface class TokenStorage {
 /// Keychain (iOS) / Keystore-backed encrypted storage (Android).
 class SecureTokenStorage implements TokenStorage {
   SecureTokenStorage([FlutterSecureStorage? storage])
-      : _storage = storage ??
-            const FlutterSecureStorage(
-              // Not restored onto a new device from a backup: a copied refresh token would be
-              // a second live session the user never signed in to.
-              iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock_this_device),
-            );
+    : _storage =
+          storage ??
+          const FlutterSecureStorage(
+            // Not restored onto a new device from a backup: a copied refresh token would be
+            // a second live session the user never signed in to.
+            iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock_this_device),
+          );
 
   final FlutterSecureStorage _storage;
   static const _access = 'auth.access_token';

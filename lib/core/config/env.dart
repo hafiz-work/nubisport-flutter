@@ -12,6 +12,8 @@ abstract final class DevEnv {
   static const String apiBaseUrl = _DevEnv.apiBaseUrl;
   @EnviedField(varName: 'WEB_ORIGIN')
   static const String webOrigin = _DevEnv.webOrigin;
+  @EnviedField(varName: 'IS_MOCK', defaultValue: false)
+  static const bool isMock = _DevEnv.isMock;
 }
 
 @Envied(path: '.env.prod', name: 'ProdEnv')
@@ -20,4 +22,6 @@ abstract final class ProdEnv {
   static const String apiBaseUrl = _ProdEnv.apiBaseUrl;
   @EnviedField(varName: 'WEB_ORIGIN')
   static const String webOrigin = _ProdEnv.webOrigin;
+  @EnviedField(varName: 'IS_MOCK', defaultValue: false)
+  static const bool isMock = _ProdEnv.isMock;
 }

@@ -42,6 +42,12 @@ dependencies:
   drift_flutter: ^0.3.1
   flutter_svg: ^2.3.0
   path_provider: ^2.1.6
+  liquid_glass_widgets: ^1.15.0
+  flutter_map: ^8.3.2
+  flutter_map_vector_tiles: ^2.10.1
+  latlong2: ^0.9.1
+  share_plus: ^13.3.1
+  maplibre_gl: ^0.27.1
 
 dev_dependencies:
   flutter_test:
@@ -58,6 +64,7 @@ dev_dependencies:
   drift_dev: ^2.35.2
   flutter_native_splash: ^2.4.8
   flutter_flavorizr: ^2.6.0
+  flutter_launcher_icons: ^0.14.4
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -67,6 +74,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/brand/
+    - assets/images/
   # Same display face as the web (nubisport-astro public/fonts, OFL - assets/fonts/OFL.txt).
   # Body text uses the platform font, like the web's system-ui stack.
   fonts:
@@ -85,12 +93,28 @@ flutter:
 flutter_native_splash:
   color: "#ffffff"
   image: assets/splash/nubi-crest-roundel.png
-  color_dark: "#0a1a33"
+  # The crest PNG has opaque white corners, so the splash background stays white
+  # in dark mode too (a navy background would show it as a white square).
+  color_dark: "#ffffff"
   image_dark: assets/splash/nubi-crest-roundel-reversed.png
   android_12:
     color: "#ffffff"
-    image: assets/splash/nubi-crest-roundel.png
-    color_dark: "#0a1a33"
-    image_dark: assets/splash/nubi-crest-roundel-reversed.png
+    # Padded to ~62% of the canvas: Android 12 masks the icon and only shows the
+    # centre ~2/3, so the full-bleed roundel gets cropped.
+    image: assets/splash/nubi-crest-roundel-safe.png
+    color_dark: "#ffffff"
+    image_dark: assets/splash/nubi-crest-roundel-reversed-safe.png
   fullscreen: false
   web: false
+
+# App launcher icon: N monogram on the brand navy. Regenerate with:
+#   dart run flutter_launcher_icons
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/icon/app_icon.png
+  adaptive_icon_background: "#0a1a33"
+  adaptive_icon_foreground: assets/icon/app_icon_foreground.png
+  adaptive_icon_foreground_inset: 0
+  remove_alpha_ios: true
+  min_sdk_android: 21

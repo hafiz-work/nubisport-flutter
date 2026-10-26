@@ -1,20 +1,18 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/config/app_config.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/storage/token_storage.dart';
 import '../domain/app_user.dart';
 import '../domain/auth_repository.dart';
 import 'auth_remote_data_source.dart';
+import 'mock_auth_repository.dart';
 import 'user_local_data_source.dart';
 
 class AuthRepositoryImpl implements AuthRepository {
-  AuthRepositoryImpl({
-    required this.remote,
-    required this.local,
-    required this.tokens,
-  });
+  AuthRepositoryImpl({required this.remote, required this.local, required this.tokens});
 
   final AuthRemoteDataSource remote;
   final UserLocalDataSource local;
@@ -40,16 +38,8 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
-  Future<AppUser> login({
-    required String email,
-    required String password,
-    String? captchaToken,
-  }) async {
-    final result = await remote.login(
-      email: email,
-      password: password,
-      captchaToken: captchaToken,
-    );
+  Future<AppUser> login({required String email, required String password, String? captchaToken}) async {
+    final result = await remote.login(email: email, password: password, captchaToken: captchaToken);
     // Another account's data must never carry over (same rule as the web's device-data.ts).
     final cached = await local.read();
     if (cached != null && cached.id != result.user.id) {
@@ -61,6 +51,40 @@ class AuthRepositoryImpl implements AuthRepository {
     await local.save(user);
     return user;
   }
+
+  @override
+  Future<void> register({
+    required String name,
+    required String email,
+    required String password,
+    String? captchaToken,
+  }) => remote.register(name: name, email: email, password: password, captchaToken: captchaToken);
+
+  @override
+  Future<void> forgotPassword({required String email}) => remote.forgotPassword(email: email);
+
+  @override
+  Future<AppUser> updateProfile({
+    required String name,
+    required String username,
+    required String location,
+    required String bio,
+    required bool profilePublic,
+  }) async {
+    final user = await remote.updateProfile(
+      name: name,
+      username: username,
+      location: location,
+      bio: bio,
+      profilePublic: profilePublic,
+    );
+    await local.save(user);
+    return user;
+  }
+
+  @override
+  Future<void> changePassword({required String currentPassword, required String newPassword}) =>
+      remote.changePassword(currentPassword: currentPassword, newPassword: newPassword);
 
   @override
   Future<void> logout() async {
@@ -78,10 +102,11 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 }
 
-final authRepositoryProvider = Provider<AuthRepository>(
-  (ref) => AuthRepositoryImpl(
+final authRepositoryProvider = Provider<AuthRepository>((ref) {
+  if (ref.watch(appConfigProvider).isMock) return MockAuthRepository();
+  return AuthRepositoryImpl(
     remote: DioAuthRemoteDataSource(ref.watch(dioProvider)),
     local: DriftUserLocalDataSource(ref.watch(appDatabaseProvider)),
     tokens: ref.watch(tokenStorageProvider),
-  ),
-);
+  );
+});
