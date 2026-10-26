@@ -22,16 +22,8 @@ class DriftUserLocalDataSource implements UserLocalDataSource {
   Future<AppUser?> read() async {
     final row = await _db.select(_db.cachedUsers).getSingleOrNull();
     if (row == null) return null;
-    final apps = (jsonDecode(row.appsJson) as Map<String, dynamic>).map(
-      (k, v) => MapEntry(k, '$v'),
-    );
-    return AppUser(
-      id: row.id,
-      name: row.name,
-      email: row.email,
-      role: row.role,
-      apps: apps,
-    );
+    final apps = (jsonDecode(row.appsJson) as Map<String, dynamic>).map((k, v) => MapEntry(k, '$v'));
+    return AppUser(id: row.id, name: row.name, email: row.email, role: row.role, apps: apps);
   }
 
   @override

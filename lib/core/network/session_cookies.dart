@@ -18,7 +18,5 @@ AuthTokens? tokensFromSetCookie(Headers headers) {
     if (name == 'access_token') access = value;
     if (name == 'refresh_token') refresh = value;
   }
-  return access != null && refresh != null
-      ? AuthTokens(accessToken: access, refreshToken: refresh)
-      : null;
+  return access != null && refresh != null ? AuthTokens(accessToken: access, refreshToken: refresh) : null;
 }
