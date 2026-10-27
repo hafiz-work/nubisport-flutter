@@ -1,9 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/network/api_client.dart';
-import '../../data/auth_repository_impl.dart';
-import '../../domain/app_user.dart';
-import '../../domain/auth_repository.dart';
+import '../../data/repositories/auth_repository_impl.dart';
+import '../../domain/models/app_user.dart';
+import '../../domain/repositories/auth_repository.dart';
 
 /// App-wide auth state: loading (restoring) -> data(user) signed in / data(null) signed out.
 /// The root widget switches screens on it, so there is no route guard to forget.

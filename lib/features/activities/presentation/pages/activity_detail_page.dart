@@ -3,16 +3,17 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../../../../../core/theme/app_colors.dart';
 import '../../../../../core/theme/app_theme.dart';
-import '../../domain/activity.dart';
+import '../../domain/models/activity.dart';
 import '../activity_format.dart';
-import '../activity_providers.dart';
+import '../../../auth/presentation/controllers/auth_controller.dart';
+import '../controllers/activity_providers.dart';
 import '../widgets/activity_empty_state.dart';
 import '../widgets/activity_map.dart';
 import '../widgets/activity_map_3d.dart';
+import '../widgets/activity_share_sheet.dart';
 import '../widgets/map_style_sheet.dart';
 
 class ActivityDetailPage extends ConsumerWidget {
@@ -29,8 +30,8 @@ class ActivityDetailPage extends ConsumerWidget {
           padding: EdgeInsets.all(20),
           child: ActivityEmptyState(
             icon: Icons.cloud_off,
-            title: 'Tak dapat muat butiran',
-            message: 'Semak sambungan anda dan cuba lagi.',
+            title: 'Couldn\'t share image.',
+            message: 'Check your connection and try again.',
           ),
         ),
       ),
@@ -40,12 +41,12 @@ class ActivityDetailPage extends ConsumerWidget {
                 padding: EdgeInsets.all(20),
                 child: ActivityEmptyState(
                   icon: Icons.search_off,
-                  title: 'Aktiviti tak dijumpai',
-                  message: 'Aktiviti ini mungkin telah dipadam.',
+                  title: 'Activity not found',
+                  message: 'This activity may have been deleted.',
                 ),
               ),
             )
-          : _ActivityDetail(activity: activity),
+          : _ActivityDetail(activity: activity, isMine: ref.watch(authControllerProvider).value?.id == activity.userId),
     );
   }
 }
@@ -57,14 +58,15 @@ class _FallbackScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Butiran aktiviti')),
+    appBar: AppBar(title: const Text('Activity details')),
     body: child,
   );
 }
 
 class _ActivityDetail extends StatefulWidget {
-  const _ActivityDetail({required this.activity});
+  const _ActivityDetail({required this.activity, required this.isMine});
   final Activity activity;
+  final bool isMine;
 
   @override
   State<_ActivityDetail> createState() => _ActivityDetailState();
@@ -115,17 +117,6 @@ class _ActivityDetailState extends State<_ActivityDetail> {
     _sheetController.removeListener(_onSheetChanged);
     _sheetController.dispose();
     super.dispose();
-  }
-
-  Future<void> _share() async {
-    final activity = widget.activity;
-    final text =
-        '${activity.userName} · ${activity.title}\n'
-        '${formatDistance(activity.distanceKm)} · ${formatDuration(activity.duration)} · '
-        '${formatPace(activity.pace)}/km\n'
-        '${activity.location}\n'
-        '#NubiSport';
-    await SharePlus.instance.share(ShareParams(text: text, subject: activity.title));
   }
 
   @override
@@ -188,30 +179,30 @@ class _ActivityDetailState extends State<_ActivityDetail> {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _MapButton(
-                          icon: Icons.arrow_back,
-                          tooltip: 'Kembali',
-                          onTap: () => Navigator.of(context).pop(),
-                        ),
+                        _MapButton(icon: Icons.arrow_back, tooltip: 'Back', onTap: () => Navigator.of(context).pop()),
                         const Spacer(),
                         Column(
                           children: [
-                            _MapButton(icon: Icons.share_outlined, tooltip: 'Kongsi aktiviti', onTap: _share),
+                            _MapButton(
+                              icon: Icons.share_outlined,
+                              tooltip: 'Share activity',
+                              onTap: () => showActivityShareSheet(context, activity, isMine: widget.isMine),
+                            ),
                             _MapButton(
                               icon: Icons.layers_outlined,
-                              tooltip: 'Jenis peta',
+                              tooltip: 'Map style',
                               onTap: () => showMapStyleSheet(context),
                             ),
                             if (can3d)
                               _MapButton(
                                 // Shows the mode a tap switches to, like Strava's 2D/3D toggle.
                                 label: _show3d ? '2D' : '3D',
-                                tooltip: _show3d ? 'Tukar ke peta 2D' : 'Tukar ke peta 3D',
+                                tooltip: _show3d ? 'Switch to 2D map' : 'Switch to 3D map',
                                 onTap: () => setState(() => _show3d = !_show3d),
                               ),
                             _MapButton(
                               icon: Icons.my_location,
-                              tooltip: 'Fokus semula laluan',
+                              tooltip: 'Refocus route',
                               // Re-fit the whole route above the sheet at its current size.
                               onTap: () => setState(() {
                                 // Capped so a fully opened sheet still leaves room to fit the route.
@@ -282,7 +273,7 @@ class _ActivityDetailState extends State<_ActivityDetail> {
                         _StatGrid(activity: activity),
                         if (activity.splits.isNotEmpty) ...[
                           const SizedBox(height: 28),
-                          const _SectionLabel('Split setiap KM'),
+                          const _SectionLabel('Splits per KM'),
                           const SizedBox(height: 10),
                           _SplitsCard(activity: activity),
                         ],
@@ -474,11 +465,11 @@ class _StatGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final stats = [
-      (label: 'Jarak', value: formatDistance(activity.distanceKm)),
-      (label: 'Pace purata', value: formatPace(activity.pace)),
-      (label: 'Masa bergerak', value: formatDuration(activity.duration)),
-      (label: 'Elevasi', value: '${activity.elevationGainM} m'),
-      (label: 'Kalori', value: '${activity.calories} Cal'),
+      (label: 'Distance', value: formatDistance(activity.distanceKm)),
+      (label: 'Average pace', value: formatPace(activity.pace)),
+      (label: 'Moving time', value: formatDuration(activity.duration)),
+      (label: 'Elevation', value: '${activity.elevationGainM} m'),
+      (label: 'Calories', value: '${activity.calories} Cal'),
       (label: 'Kudos', value: '${activity.kudos}'),
     ];
     return LayoutBuilder(

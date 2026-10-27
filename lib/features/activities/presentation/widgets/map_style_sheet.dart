@@ -22,7 +22,7 @@ Future<void> showMapStyleSheet(BuildContext context) {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _SectionTitle('Jenis peta'),
+                _SectionTitle('Map style'),
                 const SizedBox(height: 10),
                 _OptionsRow(
                   options: const [
@@ -33,16 +33,12 @@ Future<void> showMapStyleSheet(BuildContext context) {
                       premium: false,
                     ),
                     _MapOption(
-                      label: 'Satelit',
+                      label: 'Satellite',
                       colors: [Color(0xFF2E4A32), Color(0xFF1E2E24)],
                       icon: Icons.satellite_alt,
                     ),
-                    _MapOption(label: 'Hibrid', colors: [Color(0xFF3F6B4A), Color(0xFF25403A)]),
-                    _MapOption(
-                      label: 'Musim sejuk',
-                      colors: [Color(0xFFC9D6DE), Color(0xFF8FA9B5)],
-                      icon: Icons.ac_unit,
-                    ),
+                    _MapOption(label: 'Hybrid', colors: [Color(0xFF3F6B4A), Color(0xFF25403A)]),
+                    _MapOption(label: 'Winter', colors: [Color(0xFFC9D6DE), Color(0xFF8FA9B5)], icon: Icons.ac_unit),
                   ],
                   onTap: (option) => _comingSoon(context, option),
                 ),
@@ -52,20 +48,20 @@ Future<void> showMapStyleSheet(BuildContext context) {
                 _OptionsRow(
                   options: const [
                     _MapOption(label: 'Global', colors: [Color(0xFF2D5BFF), Color(0xFFFF4D3D)], heatmap: true),
-                    _MapOption(label: 'Mingguan', colors: [Color(0xFFFFB020), Color(0xFFE23A3A)], heatmap: true),
-                    _MapOption(label: 'Malam', colors: [Color(0xFF3C4F5C), Color(0xFFC79A4B)], heatmap: true),
-                    _MapOption(label: 'Peribadi', colors: [Color(0xFFE86A8B), Color(0xFF7B3FF2)], heatmap: true),
+                    _MapOption(label: 'Weekly', colors: [Color(0xFFFFB020), Color(0xFFE23A3A)], heatmap: true),
+                    _MapOption(label: 'Night', colors: [Color(0xFF3C4F5C), Color(0xFFC79A4B)], heatmap: true),
+                    _MapOption(label: 'Personal', colors: [Color(0xFFE86A8B), Color(0xFF7B3FF2)], heatmap: true),
                   ],
                   onTap: (option) => _comingSoon(context, option),
                 ),
                 const SizedBox(height: 24),
-                _SectionTitle('Lapisan', info: true),
+                _SectionTitle('Layers', info: true),
                 const SizedBox(height: 10),
                 _OptionsRow(
                   options: const [
                     _MapOption(label: 'POI', colors: [Color(0xFF20402F), Color(0xFF122A1E)], icon: Icons.restaurant),
                     _MapOption(
-                      label: 'Lorong basikal',
+                      label: 'Bike lanes',
                       colors: [Color(0xFF2F5D3A), Color(0xFF1C3B28)],
                       icon: Icons.directions_bike,
                     ),
@@ -78,14 +74,14 @@ Future<void> showMapStyleSheet(BuildContext context) {
                 _OptionsRow(
                   options: const [
                     _MapOption(label: 'Terrain', colors: [Color(0xFF6B4F3A), Color(0xFF3E2C20)], icon: Icons.terrain),
-                    _MapOption(label: 'Kontur', colors: [Color(0xFF8A6A4F), Color(0xFF4A3525)], icon: Icons.landscape),
-                    _MapOption(label: 'Cerun', colors: [Color(0xFF7B5A3E), Color(0xFF3A2A1D)], icon: Icons.trending_up),
+                    _MapOption(label: 'Contour', colors: [Color(0xFF8A6A4F), Color(0xFF4A3525)], icon: Icons.landscape),
+                    _MapOption(label: 'Slope', colors: [Color(0xFF7B5A3E), Color(0xFF3A2A1D)], icon: Icons.trending_up),
                   ],
                   onTap: (option) => _comingSoon(context, option),
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'Pilihan peta akan datang. Buat masa ini peta menggunakan gaya standard.',
+                  'More map styles are coming. The map currently uses the standard style.',
                   style: sheetTheme.textTheme.bodySmall?.copyWith(color: sheetTheme.colorScheme.onSurfaceVariant),
                 ),
               ],
@@ -101,7 +97,7 @@ void _comingSoon(BuildContext context, _MapOption option) {
   if (option.selected) return;
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text('${option.label} akan datang.')));
+    ..showSnackBar(SnackBar(content: Text('${option.label} is coming soon.')));
 }
 
 class _SectionTitle extends StatelessWidget {

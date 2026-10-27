@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nubisport_flutter/features/settings/pricing_sheet.dart';
+import 'package:nubisport_flutter/features/settings/presentation/widgets/pricing_sheet.dart';
 
 void main() {
   testWidgets('pricing sheet fits and scrolls horizontally', (tester) async {
@@ -23,14 +23,14 @@ void main() {
     await tester.tap(find.text('Buka'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Pilih pelan anda'), findsOneWidget);
-    expect(find.text('Percuma'), findsOneWidget);
+    expect(find.text('Choose your plan'), findsOneWidget);
+    expect(find.text('Free'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await tester.drag(find.byType(PageView), const Offset(-350, 0));
     await tester.pumpAndSettle();
 
-    expect(find.text('Ahli'), findsOneWidget);
+    expect(find.text('Member'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

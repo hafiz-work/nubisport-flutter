@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../domain/activity.dart';
+import '../domain/models/activity.dart';
 
-const _months = ['Jan', 'Feb', 'Mac', 'Apr', 'Mei', 'Jun', 'Jul', 'Ogos', 'Sep', 'Okt', 'Nov', 'Dis'];
+const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 String twoDigits(int value) => value.toString().padLeft(2, '0');
 
@@ -32,7 +32,7 @@ String formatActivityDate(DateTime date) {
 }
 
 String activityLabel(ActivityType type) => switch (type) {
-  ActivityType.run => 'Larian',
+  ActivityType.run => 'Run',
   ActivityType.walk => 'Jalan kaki',
   ActivityType.hike => 'Hike',
   ActivityType.ride => 'Kayuh',

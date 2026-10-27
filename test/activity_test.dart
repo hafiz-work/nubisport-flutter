@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nubisport_flutter/core/mock/mock_accounts.dart';
-import 'package:nubisport_flutter/features/activities/data/mock_activity_repository.dart';
+import 'package:nubisport_flutter/features/activities/data/repositories/mock_activity_repository.dart';
 
 void main() {
   group('MockActivityRepository', () {

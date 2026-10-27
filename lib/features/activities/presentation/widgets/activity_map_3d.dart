@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 
 import '../../../../core/theme/app_colors.dart';
-import '../../domain/activity.dart';
+import '../../domain/models/activity.dart';
 
 /// Native MapLibre map for the activity detail page: angled 3D camera, the
 /// Liberty style's 3D buildings, and a GeoJSON route that draws itself.
@@ -435,7 +435,7 @@ class _ActivityMap3DState extends State<ActivityMap3D> with SingleTickerProvider
               right: 12,
               bottom: widget.controlsBottomInset,
               child: Tooltip(
-                message: 'Main semula animasi',
+                message: 'Replay animation',
                 child: Material(
                   color: theme.colorScheme.surface.withValues(alpha: 0.94),
                   shape: const CircleBorder(),

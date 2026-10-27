@@ -27,7 +27,7 @@ final confirmed = await FamilyModalSheet.showMaterialDefault<bool>(
 );
 ```
 
-Contoh sebenar: dialog log keluar dalam `lib/features/profile/profile_page.dart`.
+Contoh sebenar: dialog log keluar dalam `lib/features/profile/presentation/pages/profile_page.dart`.
 
 ## Naik taraf
 

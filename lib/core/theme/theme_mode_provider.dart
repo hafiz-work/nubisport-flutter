@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// App-wide light/dark choice (Tema page). Session-only for now.
+/// App-wide light/dark choice (Appearance page). Session-only for now.
 final themeModeProvider = NotifierProvider<ThemeModeController, ThemeMode>(ThemeModeController.new);
 
 class ThemeModeController extends Notifier<ThemeMode> {
@@ -12,7 +12,7 @@ class ThemeModeController extends Notifier<ThemeMode> {
 }
 
 String themeModeLabel(ThemeMode mode) => switch (mode) {
-  ThemeMode.system => 'Ikut sistem',
-  ThemeMode.light => 'Cerah',
-  ThemeMode.dark => 'Gelap',
+  ThemeMode.system => 'Phone default',
+  ThemeMode.light => 'Light',
+  ThemeMode.dark => 'Dark',
 };

@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/navigation/app_navigator.dart';
+import '../../core/navigation/app_routes.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
-import '../activities/domain/activity.dart';
-import '../activities/presentation/pages/activity_detail_page.dart';
+import '../activities/domain/models/activity.dart';
 import '../activities/presentation/activity_format.dart';
-import '../activities/presentation/activity_providers.dart';
+import '../activities/presentation/controllers/activity_providers.dart';
 import '../activities/presentation/widgets/activity_card.dart';
-import '../auth/domain/app_user.dart';
-import '../plans/presentation/plans_page.dart';
+import '../auth/domain/models/app_user.dart';
 
 /// Post-login dashboard. Summary and recent runs come from the activity
 /// repository (mock for now), scoped to the signed-in account.
@@ -24,14 +24,14 @@ class HomePage extends ConsumerWidget {
   final VoidCallback? onOpenActivities;
 
   void _openDetail(BuildContext context, String id) {
-    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ActivityDetailPage(activityId: id)));
+    AppNavigator.activityDetail(context, id);
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     void comingSoon(String label) => ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text('$label akan datang.')));
+      ..showSnackBar(SnackBar(content: Text('$label is coming soon.')));
 
     final activities = ref.watch(myActivitiesProvider);
     final items = activities.value ?? const <Activity>[];
@@ -48,24 +48,24 @@ class HomePage extends ConsumerWidget {
         children: [
           _GreetingCard(user: user),
           const SizedBox(height: 24),
-          const _SectionTitle(title: 'Ringkasan 7 hari terakhir'),
+          const _SectionTitle(title: 'Last 7 days summary'),
           const SizedBox(height: 10),
           _StatsRow(runs: '${week.length}', distance: formatDistance(totalKm), time: formatDuration(totalTime)),
           const SizedBox(height: 24),
-          const _SectionTitle(title: 'Pintasan'),
+          const _SectionTitle(title: 'Shortcuts'),
           const SizedBox(height: 10),
           _QuickActions(
             onTap: (label) {
-              if (label == 'Profil' && onOpenProfile != null) {
+              if (label == 'Profile' && onOpenProfile != null) {
                 onOpenProfile!();
                 return;
               }
-              if (label == 'Komuniti' && onOpenFeed != null) {
+              if (label == 'Community' && onOpenFeed != null) {
                 onOpenFeed!();
                 return;
               }
-              if (label == 'Pelan latihan') {
-                Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const PlansPage()));
+              if (label == 'Training plan') {
+                AppNavigator.push<void>(context, AppRoutes.trainingPlans);
                 return;
               }
               comingSoon(label);
@@ -73,8 +73,8 @@ class HomePage extends ConsumerWidget {
           ),
           const SizedBox(height: 24),
           _SectionTitle(
-            title: 'Aktiviti terkini',
-            trailing: items.isEmpty ? null : 'Lihat semua',
+            title: 'Recent activities',
+            trailing: items.isEmpty ? null : 'See all',
             onTrailingTap: items.isEmpty ? null : onOpenActivities,
           ),
           const SizedBox(height: 10),
@@ -115,10 +115,10 @@ class _GreetingCard extends StatelessWidget {
   String get _status {
     if (user.role == 'owner') return 'Pemilik';
     if (user.role == 'admin' || user.apps['nubi'] == 'admin') {
-      return 'Pentadbir';
+      return 'Admin';
     }
-    if (user.isMember) return 'Ahli Nubi';
-    return 'Belum ahli';
+    if (user.isMember) return 'Nubi Member';
+    return 'Not a member';
   }
 
   @override
@@ -157,7 +157,7 @@ class _GreetingCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Selamat kembali,', style: theme.textTheme.bodySmall?.copyWith(color: AppColors.onDarkMuted)),
+                Text('Welcome back,', style: theme.textTheme.bodySmall?.copyWith(color: AppColors.onDarkMuted)),
                 const SizedBox(height: 2),
                 Text(
                   user.name,
@@ -232,15 +232,15 @@ class _StatsRow extends StatelessWidget {
     return Row(
       children: [
         Expanded(
-          child: _StatCard(icon: Icons.directions_run, value: runs, label: 'Larian'),
+          child: _StatCard(icon: Icons.directions_run, value: runs, label: 'Run'),
         ),
         const SizedBox(width: 10),
         Expanded(
-          child: _StatCard(icon: Icons.route_outlined, value: distance, label: 'Jarak'),
+          child: _StatCard(icon: Icons.route_outlined, value: distance, label: 'Distance'),
         ),
         const SizedBox(width: 10),
         Expanded(
-          child: _StatCard(icon: Icons.timer_outlined, value: time, label: 'Masa'),
+          child: _StatCard(icon: Icons.timer_outlined, value: time, label: 'Time'),
         ),
       ],
     );
@@ -292,10 +292,10 @@ class _QuickActions extends StatelessWidget {
   final void Function(String label) onTap;
 
   static const _actions = [
-    (label: 'Mula larian', icon: Icons.play_circle_outline),
-    (label: 'Pelan latihan', icon: Icons.event_note_outlined),
-    (label: 'Komuniti', icon: Icons.groups_outlined),
-    (label: 'Profil', icon: Icons.person_outline),
+    (label: 'Start run', icon: Icons.play_circle_outline),
+    (label: 'Training plan', icon: Icons.event_note_outlined),
+    (label: 'Community', icon: Icons.groups_outlined),
+    (label: 'Profile', icon: Icons.person_outline),
   ];
 
   @override
@@ -381,10 +381,10 @@ class _EmptyActivity extends StatelessWidget {
         children: [
           Icon(Icons.inbox_outlined, size: 36, color: theme.colorScheme.onSurfaceVariant),
           const SizedBox(height: 12),
-          Text('Belum ada aktiviti', style: theme.textTheme.titleLarge?.copyWith(fontSize: 17)),
+          Text('No activities yet', style: theme.textTheme.titleLarge?.copyWith(fontSize: 17)),
           const SizedBox(height: 4),
           Text(
-            'Larian dan pelan anda akan muncul di sini.',
+            'Your runs and plans will appear here.',
             textAlign: TextAlign.center,
             style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),

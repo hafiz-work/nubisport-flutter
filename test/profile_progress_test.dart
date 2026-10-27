@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nubisport_flutter/core/theme/app_theme.dart';
-import 'package:nubisport_flutter/features/activities/domain/activity.dart';
-import 'package:nubisport_flutter/features/activities/presentation/activity_providers.dart';
-import 'package:nubisport_flutter/features/auth/domain/app_user.dart';
-import 'package:nubisport_flutter/features/profile/profile_page.dart';
+import 'package:nubisport_flutter/features/activities/domain/models/activity.dart';
+import 'package:nubisport_flutter/features/activities/presentation/controllers/activity_providers.dart';
+import 'package:nubisport_flutter/features/auth/domain/models/app_user.dart';
+import 'package:nubisport_flutter/features/profile/presentation/pages/profile_page.dart';
 
 Activity _activity({
   required String id,
@@ -17,7 +17,7 @@ Activity _activity({
   return Activity(
     id: id,
     userId: 1,
-    userName: 'Ahli Demo',
+    userName: 'Demo Member',
     title: 'Test Run $id',
     type: ActivityType.run,
     startedAt: DateTime.now().subtract(Duration(days: daysAgo)),
@@ -73,24 +73,24 @@ void main() {
         child: MaterialApp(
           theme: AppTheme.light,
           home: const ProfilePage(
-            user: AppUser(id: 1, name: 'Ahli Demo', email: 'ahli@nubi.test', role: 'user', apps: {'nubi': 'ahli'}),
+            user: AppUser(id: 1, name: 'Demo Member', email: 'ahli@nubi.test', role: 'user', apps: {'nubi': 'ahli'}),
           ),
         ),
       ),
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('12 minggu lepas'), findsOneWidget);
+    expect(find.text('Past 12 weeks'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     final scrollable = find.byType(Scrollable).first;
     await tester.scrollUntilVisible(find.text('Best Efforts'), 400, scrollable: scrollable);
     expect(tester.takeException(), isNull);
 
-    await tester.scrollUntilVisible(find.text('Pelan latihan'), 400, scrollable: scrollable);
+    await tester.scrollUntilVisible(find.text('Training plan'), 400, scrollable: scrollable);
     expect(tester.takeException(), isNull);
 
-    await tester.tap(find.text('Lagi'));
+    await tester.tap(find.text('More'));
     await tester.pumpAndSettle();
     await tester.drag(find.byType(CustomScrollView), const Offset(0, 2000));
     await tester.pumpAndSettle();
