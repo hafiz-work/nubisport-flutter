@@ -3,8 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/widgets/brand.dart';
-import '../../domain/auth_repository.dart';
+import '../../domain/repositories/auth_repository.dart';
 import '../controllers/auth_controller.dart';
+import '../widgets/auth_error_box.dart';
 
 class RegisterPage extends ConsumerStatefulWidget {
   const RegisterPage({super.key});
@@ -56,7 +57,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Daftar akaun')),
+      appBar: AppBar(title: const Text('Create account')),
       body: SafeArea(
         child: GestureDetector(
           onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
@@ -75,17 +76,17 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                             children: [
                               const Center(child: BrandCrest(size: 100)),
                               const SizedBox(height: 24),
-                              Text('Daftar akaun', style: theme.textTheme.headlineLarge, textAlign: TextAlign.center),
+                              Text('Create account', style: theme.textTheme.headlineLarge, textAlign: TextAlign.center),
                               const SizedBox(height: 6),
                               Text(
-                                'Satu akaun untuk Nubi Sport dan hafizbahtiar.com.',
+                                'One account for Nubi Sport and hafizbahtiar.com.',
                                 style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                                 textAlign: TextAlign.center,
                               ),
                               const SizedBox(height: 28),
                               TextFormField(
                                 controller: _name,
-                                decoration: const InputDecoration(labelText: 'Nama', counterText: ''),
+                                decoration: const InputDecoration(labelText: 'Name', counterText: ''),
                                 textCapitalization: TextCapitalization.words,
                                 textInputAction: TextInputAction.next,
                                 autofillHints: const [AutofillHints.name],
@@ -94,14 +95,14 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                                 validator: (v) {
                                   final value = v?.trim() ?? '';
                                   return (value.isEmpty || value.length > 100)
-                                      ? 'Masukkan nama (maksimum 100 aksara).'
+                                      ? 'Enter a name (maximum 100 characters).'
                                       : null;
                                 },
                               ),
                               const SizedBox(height: 8),
                               TextFormField(
                                 controller: _email,
-                                decoration: const InputDecoration(labelText: 'E-mel', counterText: ''),
+                                decoration: const InputDecoration(labelText: 'Email', counterText: ''),
                                 keyboardType: TextInputType.emailAddress,
                                 textInputAction: TextInputAction.next,
                                 autofillHints: const [AutofillHints.email, AutofillHints.username],
@@ -110,19 +111,17 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                                 maxLength: 255,
                                 validator: (v) {
                                   final value = v?.trim() ?? '';
-                                  return (!value.contains('@') || value.length > 255)
-                                      ? 'Masukkan e-mel yang sah.'
-                                      : null;
+                                  return (!value.contains('@') || value.length > 255) ? 'Enter a valid email.' : null;
                                 },
                               ),
                               const SizedBox(height: 8),
                               TextFormField(
                                 controller: _password,
                                 decoration: InputDecoration(
-                                  labelText: 'Kata laluan',
+                                  labelText: 'Password',
                                   counterText: '',
                                   suffixIcon: IconButton(
-                                    tooltip: _showPassword ? 'Sorok kata laluan' : 'Tunjuk kata laluan',
+                                    tooltip: _showPassword ? 'Hide password' : 'Show password',
                                     icon: Icon(
                                       _showPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
                                     ),
@@ -137,7 +136,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                                 validator: (v) {
                                   final value = v ?? '';
                                   return (value.length < 12 || value.length > 200)
-                                      ? 'Kata laluan mesti 12 hingga 200 aksara.'
+                                      ? 'Password must be 12 to 200 characters.'
                                       : null;
                                 },
                               ),
@@ -148,15 +147,15 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                               const SizedBox(height: 16),
                               TextFormField(
                                 controller: _password2,
-                                decoration: const InputDecoration(labelText: 'Ulang kata laluan', counterText: ''),
+                                decoration: const InputDecoration(labelText: 'Confirm password', counterText: ''),
                                 obscureText: !_showPassword,
                                 textInputAction: TextInputAction.done,
                                 autofillHints: const [AutofillHints.newPassword],
                                 enabled: !_busy,
                                 onFieldSubmitted: (_) => _submit(),
-                                validator: (v) => v != _password.text ? 'Kata laluan tak sama.' : null,
+                                validator: (v) => v != _password.text ? 'Passwords do not match.' : null,
                               ),
-                              if (_error != null) ...[const SizedBox(height: 16), _ErrorBox(message: _error!)],
+                              if (_error != null) ...[const SizedBox(height: 16), AuthErrorBox(message: _error!)],
                               const SizedBox(height: 24),
                               FilledButton(
                                 onPressed: _busy ? null : _submit,
@@ -165,18 +164,18 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                                         dimension: 20,
                                         child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
                                       )
-                                    : const Text('Daftar'),
+                                    : const Text('Sign up'),
                               ),
                               const SizedBox(height: 12),
                               Text(
-                                'Dengan mendaftar, anda setuju dengan Terma dan Dasar Privasi Nubi Sport.',
+                                'By signing up, you agree to the Nubi Sport Terms and Privacy Policy.',
                                 style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                                 textAlign: TextAlign.center,
                               ),
                               const SizedBox(height: 8),
                               TextButton(
                                 onPressed: _busy ? null : () => Navigator.of(context).pop(),
-                                child: const Text('Dah ada akaun? Log masuk'),
+                                child: const Text('Already have an account? Log in'),
                               ),
                             ],
                           ),
@@ -211,11 +210,11 @@ class _PasswordStrength extends StatelessWidget {
     final lengthOk = password.length >= 12 && password.length <= 200;
 
     final rules = <_PasswordRule>[
-      _PasswordRule('12+ aksara', password.length, lengthOk),
-      _PasswordRule('Huruf besar', upper, upper > 0),
-      _PasswordRule('Huruf kecil', lower, lower > 0),
-      _PasswordRule('Nombor', digits, digits > 0),
-      _PasswordRule('Simbol', symbols, symbols > 0),
+      _PasswordRule('12+ characters', password.length, lengthOk),
+      _PasswordRule('Uppercase', upper, upper > 0),
+      _PasswordRule('Lowercase', lower, lower > 0),
+      _PasswordRule('Number', digits, digits > 0),
+      _PasswordRule('Symbol', symbols, symbols > 0),
     ];
     final met = rules.where((r) => r.ok).length;
     final level = !lengthOk ? 1 : (met >= 5 ? 3 : (met >= 4 ? 2 : 1));
@@ -345,57 +344,35 @@ class _VerifyEmail extends StatelessWidget {
       children: [
         Icon(Icons.mark_email_read_outlined, size: 64, color: theme.colorScheme.primary),
         const SizedBox(height: 20),
-        Text('Semak e-mel anda', style: theme.textTheme.headlineMedium, textAlign: TextAlign.center),
+        Text('Check your email', style: theme.textTheme.headlineMedium, textAlign: TextAlign.center),
         const SizedBox(height: 12),
         Text(
-          'Kalau e-mel ini boleh didaftarkan, pautan pengesahan sedang dihantar. '
-          'Klik pautan itu dalam masa 24 jam, kemudian log masuk.',
+          'If this email can be registered, a verification link is on its way. '
+          'Click the link within 24 hours, then log in.',
           style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 12),
         Text(
-          'Tiada e-mel? Semak folder spam.',
+          'No email? Check your spam folder.',
           style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 28),
-        FilledButton(onPressed: onBack, child: const Text('Kembali ke log masuk')),
+        FilledButton(onPressed: onBack, child: const Text('Back to log in')),
       ],
-    );
-  }
-}
-
-class _ErrorBox extends StatelessWidget {
-  const _ErrorBox({required this.message});
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Semantics(
-      liveRegion: true,
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: scheme.errorContainer,
-          borderRadius: BorderRadius.circular(AppTheme.radius),
-          border: Border.all(color: scheme.error.withValues(alpha: 0.4)),
-        ),
-        child: Text(message, style: TextStyle(color: scheme.onErrorContainer)),
-      ),
     );
   }
 }
 
 /// Same wording as the web register page (nubisport-astro src/pages/register.astro).
 String registerMessage(AuthFailureReason reason) => switch (reason) {
-  AuthFailureReason.invalidName => 'Masukkan nama (maksimum 100 aksara).',
-  AuthFailureReason.invalidEmail => 'Masukkan e-mel yang sah.',
-  AuthFailureReason.weakPassword => 'Kata laluan mesti 12 hingga 200 aksara.',
-  AuthFailureReason.emailTaken => 'E-mel ini sudah didaftarkan. Cuba log masuk.',
-  AuthFailureReason.captcha => 'Semakan spam gagal. Daftar dari aplikasi belum dibuka untuk pelayan ini.',
-  AuthFailureReason.rateLimited => 'Terlalu banyak cubaan. Tunggu seminit.',
-  AuthFailureReason.network => 'Tiada sambungan. Semak internet anda dan cuba lagi.',
-  _ => 'Tak dapat daftar sekarang. Cuba lagi sekejap.',
+  AuthFailureReason.invalidName => 'Enter a name (maximum 100 characters).',
+  AuthFailureReason.invalidEmail => 'Enter a valid email.',
+  AuthFailureReason.weakPassword => 'Password must be 12 to 200 characters.',
+  AuthFailureReason.emailTaken => 'This email is already registered. Try logging in.',
+  AuthFailureReason.captcha => 'Spam check failed. App sign-up is not enabled for this server yet.',
+  AuthFailureReason.rateLimited => 'Too many attempts. Wait a minute.',
+  AuthFailureReason.network => 'No connection. Check your internet and try again.',
+  _ => 'Can\'t sign up right now. Try again shortly.',
 };

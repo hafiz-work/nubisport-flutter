@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/navigation/app_navigator.dart';
+import '../../../../core/navigation/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/widgets/brand.dart';
-import '../../domain/auth_repository.dart';
+import '../../domain/repositories/auth_repository.dart';
 import '../controllers/auth_controller.dart';
-import 'forgot_password_page.dart';
-import 'register_page.dart';
+import '../widgets/auth_error_box.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
@@ -23,6 +23,13 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   bool _busy = false;
   bool _showPassword = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _email.text = 'admin@nubi.test';
+    _password.text = 'Password123!';
+  }
 
   @override
   void dispose() {
@@ -49,12 +56,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   void _openRegister() {
     FocusManager.instance.primaryFocus?.unfocus();
-    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const RegisterPage()));
+    AppNavigator.push<void>(context, AppRoutes.register);
   }
 
   void _openForgotPassword() {
     FocusManager.instance.primaryFocus?.unfocus();
-    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const ForgotPasswordPage()));
+    AppNavigator.push<void>(context, AppRoutes.forgotPassword);
   }
 
   @override
@@ -77,31 +84,31 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       children: [
                         const Center(child: BrandCrest(size: 120)),
                         const SizedBox(height: 28),
-                        Text('Log masuk', style: theme.textTheme.headlineLarge, textAlign: TextAlign.center),
+                        Text('Log in', style: theme.textTheme.headlineLarge, textAlign: TextAlign.center),
                         const SizedBox(height: 6),
                         Text(
-                          'Pelan, aktiviti dan larian kumpulan anda.',
+                          'Your plans, activities and group runs.',
                           style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 28),
                         TextFormField(
                           controller: _email,
-                          decoration: const InputDecoration(labelText: 'E-mel'),
+                          decoration: const InputDecoration(labelText: 'Email'),
                           keyboardType: TextInputType.emailAddress,
                           textInputAction: TextInputAction.next,
                           autofillHints: const [AutofillHints.email, AutofillHints.username],
                           autocorrect: false,
                           enabled: !_busy,
-                          validator: (v) => (v == null || !v.trim().contains('@')) ? 'Masukkan e-mel yang sah.' : null,
+                          validator: (v) => (v == null || !v.trim().contains('@')) ? 'Enter a valid email.' : null,
                         ),
                         const SizedBox(height: 16),
                         TextFormField(
                           controller: _password,
                           decoration: InputDecoration(
-                            labelText: 'Kata laluan',
+                            labelText: 'Password',
                             suffixIcon: IconButton(
-                              tooltip: _showPassword ? 'Sorok kata laluan' : 'Tunjuk kata laluan',
+                              tooltip: _showPassword ? 'Hide password' : 'Show password',
                               icon: Icon(_showPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
                               onPressed: () => setState(() => _showPassword = !_showPassword),
                             ),
@@ -111,14 +118,14 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                           autofillHints: const [AutofillHints.password],
                           enabled: !_busy,
                           onFieldSubmitted: (_) => _submit(),
-                          validator: (v) => (v == null || v.isEmpty) ? 'Masukkan kata laluan.' : null,
+                          validator: (v) => (v == null || v.isEmpty) ? 'Enter your password.' : null,
                         ),
                         const SizedBox(height: 6),
                         Align(
                           alignment: Alignment.centerRight,
-                          child: _TextLink(label: 'Lupa kata laluan?', onTap: _busy ? null : _openForgotPassword),
+                          child: _TextLink(label: 'Forgot password?', onTap: _busy ? null : _openForgotPassword),
                         ),
-                        if (_error != null) ...[const SizedBox(height: 16), _ErrorBox(message: _error!)],
+                        if (_error != null) ...[const SizedBox(height: 16), AuthErrorBox(message: _error!)],
                         const SizedBox(height: 24),
                         FilledButton(
                           onPressed: _busy ? null : _submit,
@@ -127,7 +134,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                   dimension: 20,
                                   child: CircularProgressIndicator.adaptive(strokeWidth: 2.5),
                                 )
-                              : const Text('Log masuk'),
+                              : const Text('Log in'),
                         ),
                         const SizedBox(height: 12),
                         Wrap(
@@ -135,11 +142,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                           crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
                             Text(
-                              'Belum ada akaun? ',
+                              'Don\'t have an account? ',
                               style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                             ),
                             _TextLink(
-                              label: 'Daftar',
+                              label: 'Sign up',
                               onTap: _busy ? null : _openRegister,
                               style: theme.textTheme.bodySmall,
                             ),
@@ -195,35 +202,13 @@ class _TextLink extends StatelessWidget {
   }
 }
 
-class _ErrorBox extends StatelessWidget {
-  const _ErrorBox({required this.message});
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Semantics(
-      liveRegion: true,
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: scheme.errorContainer,
-          borderRadius: BorderRadius.circular(AppTheme.radius),
-          border: Border.all(color: scheme.error.withValues(alpha: 0.4)),
-        ),
-        child: Text(message, style: TextStyle(color: scheme.onErrorContainer)),
-      ),
-    );
-  }
-}
-
 /// Same wording as the web login (nubisport-astro src/pages/login.astro).
 String loginMessage(AuthFailureReason reason) => switch (reason) {
-  AuthFailureReason.invalidCredentials => 'E-mel atau kata laluan salah.',
-  AuthFailureReason.emailUnverified => 'Sahkan e-mel anda dulu - semak peti masuk untuk pautan pengesahan.',
-  AuthFailureReason.banned => 'Akaun ini disekat. Hubungi pentadbir Nubi.',
-  AuthFailureReason.captcha => 'Semakan spam gagal. Log masuk dari aplikasi belum dibuka untuk pelayan ini.',
-  AuthFailureReason.rateLimited => 'Terlalu banyak cubaan. Tunggu seminit.',
-  AuthFailureReason.network => 'Tiada sambungan. Semak internet anda dan cuba lagi.',
-  _ => 'Tak dapat log masuk sekarang. Cuba lagi sekejap.',
+  AuthFailureReason.invalidCredentials => 'Incorrect email or password.',
+  AuthFailureReason.emailUnverified => 'Verify your email first - check your inbox for the verification link.',
+  AuthFailureReason.banned => 'This account is suspended. Contact a Nubi admin.',
+  AuthFailureReason.captcha => 'Spam check failed. App login is not enabled for this server yet.',
+  AuthFailureReason.rateLimited => 'Too many attempts. Wait a minute.',
+  AuthFailureReason.network => 'No connection. Check your internet and try again.',
+  _ => 'Can\'t log in right now. Try again shortly.',
 };

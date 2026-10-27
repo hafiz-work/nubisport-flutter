@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'activity_detail_page.dart';
-import '../activity_providers.dart';
+import '../../../../core/navigation/app_navigator.dart';
+import '../controllers/activity_providers.dart';
 import '../widgets/activity_card.dart';
 import '../widgets/activity_empty_state.dart';
 
@@ -11,14 +11,14 @@ class ActivitiesPage extends ConsumerWidget {
   const ActivitiesPage({super.key});
 
   void _open(BuildContext context, String id) {
-    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ActivityDetailPage(activityId: id)));
+    AppNavigator.activityDetail(context, id);
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final activities = ref.watch(myActivitiesProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Aktiviti saya')),
+      appBar: AppBar(title: const Text('My activities')),
       body: RefreshIndicator.adaptive(
         onRefresh: () async {
           ref.invalidate(myActivitiesProvider);
@@ -32,8 +32,8 @@ class ActivitiesPage extends ConsumerWidget {
             children: const [
               ActivityEmptyState(
                 icon: Icons.cloud_off,
-                title: 'Tak dapat muat aktiviti',
-                message: 'Semak sambungan anda dan cuba lagi.',
+                title: 'Couldn\'t share image.',
+                message: 'Check your connection and try again.',
               ),
             ],
           ),
@@ -44,8 +44,8 @@ class ActivitiesPage extends ConsumerWidget {
               if (items.isEmpty)
                 const ActivityEmptyState(
                   icon: Icons.directions_run,
-                  title: 'Belum ada aktiviti',
-                  message: 'Larian dan senaman anda akan muncul di sini.',
+                  title: 'No activities yet',
+                  message: 'Your runs and workouts will appear here.',
                 )
               else
                 for (final activity in items)

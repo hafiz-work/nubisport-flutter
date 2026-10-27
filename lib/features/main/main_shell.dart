@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../activities/presentation/pages/feed_page.dart';
-import '../auth/domain/app_user.dart';
-import '../profile/profile_page.dart';
+import '../auth/domain/models/app_user.dart';
+import '../profile/presentation/pages/profile_page.dart';
 
 /// Bottom navigation for the signed-in app. Feed is home; profile keeps the
 /// dashboard content. iOS gets the Liquid Glass tab bar.
@@ -44,7 +44,7 @@ class _MainShellState extends State<MainShell> {
                     activeIcon: Icon(Icons.dynamic_feed),
                     label: 'Feed',
                   ),
-                  GlassTab(icon: Icon(Icons.person_outline), activeIcon: Icon(Icons.person), label: 'Profil'),
+                  GlassTab(icon: Icon(Icons.person_outline), activeIcon: Icon(Icons.person), label: 'Profile'),
                 ],
               ),
             )
@@ -60,7 +60,7 @@ class _MainShellState extends State<MainShell> {
                 NavigationDestination(
                   icon: Icon(Icons.person_outline),
                   selectedIcon: Icon(Icons.person),
-                  label: 'Profil',
+                  label: 'Profile',
                 ),
               ],
             ),

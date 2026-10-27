@@ -24,7 +24,7 @@ class MockAccount {
 abstract final class MockAccounts {
   static const ahli = MockAccount(
     id: 1,
-    name: 'Ahli Demo',
+    name: 'Demo Member',
     email: 'ahli@nubi.test',
     role: 'user',
     appRoles: {'nubi': 'ahli'},

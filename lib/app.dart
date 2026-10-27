@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/config/app_config.dart';
+import 'core/navigation/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_mode_provider.dart';
 import 'flavors.dart';
@@ -24,6 +25,7 @@ class NubiApp extends ConsumerWidget {
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       themeMode: themeMode,
+      onGenerateRoute: AppRouter.onGenerateRoute,
       // Dev builds wear a corner ribbon so they are never mistaken for production.
       builder: (context, child) => config.flavor == Flavor.prod
           ? child!

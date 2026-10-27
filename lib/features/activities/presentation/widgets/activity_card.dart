@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_theme.dart';
-import '../../domain/activity.dart';
+import '../../domain/models/activity.dart';
 import '../activity_format.dart';
 import 'activity_map.dart';
 
@@ -122,10 +122,10 @@ class ActivityCard extends StatelessWidget {
     final metrics = Row(
       children: [
         Expanded(
-          child: _Metric(value: formatDistance(activity.distanceKm), label: 'Jarak'),
+          child: _Metric(value: formatDistance(activity.distanceKm), label: 'Distance'),
         ),
         Expanded(
-          child: _Metric(value: formatDuration(activity.duration), label: 'Masa'),
+          child: _Metric(value: formatDuration(activity.duration), label: 'Time'),
         ),
         Expanded(
           child: _Metric(value: formatPace(activity.pace), label: 'Pace'),
@@ -159,7 +159,9 @@ class ActivityCard extends StatelessWidget {
                     Padding(padding: const EdgeInsets.fromLTRB(16, 16, 16, 12), child: header),
                     Stack(
                       children: [
-                        ActivityMap(activity: activity, height: 250, borderRadius: BorderRadius.zero, useVector: true),
+                        RepaintBoundary(
+                          child: ActivityMap(activity: activity, height: 250, borderRadius: BorderRadius.zero),
+                        ),
                         Positioned.fill(
                           child: GestureDetector(behavior: HitTestBehavior.opaque, onTap: onTap),
                         ),
@@ -193,7 +195,7 @@ class ActivityCard extends StatelessWidget {
                           TextButton.icon(
                             onPressed: onShare,
                             icon: const Icon(Icons.share_outlined, size: 18),
-                            label: const Text('Kongsi'),
+                            label: const Text('Share'),
                             style: actionStyle.copyWith(
                               foregroundColor: WidgetStatePropertyAll(scheme.onSurfaceVariant),
                             ),

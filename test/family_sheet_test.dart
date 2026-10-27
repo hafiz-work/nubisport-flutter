@@ -39,7 +39,14 @@ void main() {
     expect(rect.right, lessThan(400));
     expect(rect.bottom, lessThan(800));
     // The outer sheet layer must not paint the theme surface behind the margin.
-    final outer = tester.widget<Material>(find.ancestor(of: find.byWidgetPredicate((w) => w is ColoredBox && w.color == Colors.red), matching: find.byType(Material)).first);
+    final outer = tester.widget<Material>(
+      find
+          .ancestor(
+            of: find.byWidgetPredicate((w) => w is ColoredBox && w.color == Colors.red),
+            matching: find.byType(Material),
+          )
+          .first,
+    );
     expect(outer.color, Colors.transparent);
     // The drag handle must sit on the content background, not the transparent outer layer.
     final handle = tester.getRect(find.byWidgetPredicate((w) => w.runtimeType.toString() == '_DragHandle'));

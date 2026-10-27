@@ -7,12 +7,12 @@ import 'package:nubisport_flutter/core/database/app_database.dart';
 import 'package:nubisport_flutter/core/network/session_cookies.dart';
 import 'package:nubisport_flutter/core/storage/token_storage.dart';
 import 'package:nubisport_flutter/core/theme/app_theme.dart';
-import 'package:nubisport_flutter/features/auth/data/auth_remote_data_source.dart';
-import 'package:nubisport_flutter/features/auth/data/auth_repository_impl.dart';
-import 'package:nubisport_flutter/features/auth/data/mock_auth_repository.dart';
-import 'package:nubisport_flutter/features/auth/data/user_local_data_source.dart';
-import 'package:nubisport_flutter/features/auth/domain/app_user.dart';
-import 'package:nubisport_flutter/features/auth/domain/auth_repository.dart';
+import 'package:nubisport_flutter/features/auth/data/data_sources/auth_remote_data_source.dart';
+import 'package:nubisport_flutter/features/auth/data/repositories/auth_repository_impl.dart';
+import 'package:nubisport_flutter/features/auth/data/repositories/mock_auth_repository.dart';
+import 'package:nubisport_flutter/features/auth/data/data_sources/user_local_data_source.dart';
+import 'package:nubisport_flutter/features/auth/domain/models/app_user.dart';
+import 'package:nubisport_flutter/features/auth/domain/repositories/auth_repository.dart';
 import 'package:nubisport_flutter/features/auth/presentation/pages/login_page.dart';
 
 class MemoryTokenStorage implements TokenStorage {
@@ -197,13 +197,13 @@ void main() {
     test('update profile and change password', () async {
       await repo.login(email: 'ahli@nubi.test', password: 'Password123!');
       final updated = await repo.updateProfile(
-        name: 'Ahli Baru',
+        name: 'New Member',
         username: 'ahli-baru',
         location: 'Shah Alam',
-        bio: 'Lari perlahan.',
+        bio: 'Run slowly.',
         profilePublic: true,
       );
-      expect(updated.name, 'Ahli Baru');
+      expect(updated.name, 'New Member');
       expect(updated.username, 'ahli-baru');
       expect(updated.profilePublic, isTrue);
 
@@ -215,7 +215,7 @@ void main() {
       await repo.logout();
 
       final user = await repo.login(email: 'ahli@nubi.test', password: 'PasswordBaru123');
-      expect(user.name, 'Ahli Baru');
+      expect(user.name, 'New Member');
       expect(user.username, 'ahli-baru');
     });
   });
@@ -299,8 +299,8 @@ void main() {
 
     await tester.enterText(find.byType(TextFormField).at(0), 'ali@x');
     await tester.enterText(find.byType(TextFormField).at(1), 'wrong');
-    await tester.tap(find.widgetWithText(FilledButton, 'Log masuk'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Log in'));
     await tester.pumpAndSettle();
-    expect(find.text('E-mel atau kata laluan salah.'), findsOneWidget);
+    expect(find.text('Incorrect email or password.'), findsOneWidget);
   });
 }

@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nubisport_flutter/core/config/app_config.dart';
 import 'package:nubisport_flutter/core/theme/app_theme.dart';
-import 'package:nubisport_flutter/features/settings/settings_page.dart';
+import 'package:nubisport_flutter/features/settings/presentation/pages/settings_page.dart';
 import 'package:nubisport_flutter/flavors.dart';
 
 void main() {

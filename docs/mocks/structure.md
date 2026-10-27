@@ -10,26 +10,28 @@ lib/
   features/
     auth/
       data/
-        mock_auth_repository.dart # login/register/forgot (in-memory)
-        auth_repository_impl.dart # provider: Mock vs Dio/Drift
+        data_sources/                  # remote (Dio) + local (Drift)
+        repositories/
+          mock_auth_repository.dart    # login/register/forgot (in-memory)
+          auth_repository_impl.dart    # provider: Mock vs Dio/Drift
       domain/
-        auth_repository.dart
+        models/app_user.dart
+        repositories/auth_repository.dart
+      presentation/{controllers,pages,widgets}/
     activities/
-      data/
+      data/repositories/
         mock_activity_repository.dart  # seed aktiviti
         activity_repository_provider.dart
       domain/
-        activity.dart
-        activity_repository.dart
+        models/activity.dart
+        repositories/activity_repository.dart
       presentation/
-        activity_providers.dart        # FutureProvider (feed, mine, detail)
-        activities_page.dart           # senarai "Aktiviti saya"
-        feed_page.dart                 # feed + kudos lokal
-        activity_detail_page.dart      # detail + map animasi
-        widgets/
-          activity_card.dart
-          activity_map.dart
-          activity_empty_state.dart
+        controllers/activity_providers.dart  # FutureProvider (feed, mine, detail)
+        pages/                         # activities, feed, activity_detail
+        widgets/                       # card, map, share sheet, ...
+    plans/      domain/models/ + presentation/pages/
+    profile/    presentation/pages/
+    settings/   presentation/{pages,widgets}/
 docs/mocks/
   plan.md
   structure.md
@@ -40,11 +42,11 @@ docs/mocks/
 | Fail                                                         | Tanggungjawab                                                                                 |
 | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
 | `core/mock/mock_accounts.dart`                               | Definisi `MockAccount` + senarai akaun demo. Tiada import domain/Flutter.                     |
-| `features/auth/data/mock_auth_repository.dart`               | Tukar `MockAccount` → `AppUser`, semak password, sesi in-memory, register akaun baru.         |
-| `features/activities/data/mock_activity_repository.dart`     | Seed `Activity` (termasuk lat/lng/route). Tapis `myActivities` ikut `userId`.                 |
-| `features/activities/data/activity_repository_provider.dart` | Pilih implementasi repository (buat masa ini sentiasa mock).                                  |
-| `features/activities/presentation/activity_providers.dart`   | `myActivitiesProvider` baca user login; `activityFeedProvider`; `activityDetailProvider(id)`. |
-| `features/activities/presentation/feed_page.dart`            | Senarai feed; simpan set id yang diberi kudos (state lokal).                                  |
+| `features/auth/data/repositories/mock_auth_repository.dart`            | Tukar `MockAccount` → `AppUser`, semak password, sesi in-memory, register akaun baru.         |
+| `features/activities/data/repositories/mock_activity_repository.dart`    | Seed `Activity` (termasuk lat/lng/route). Tapis `myActivities` ikut `userId`.                 |
+| `features/activities/data/repositories/activity_repository_provider.dart` | Pilih implementasi repository (buat masa ini sentiasa mock).                                  |
+| `features/activities/presentation/controllers/activity_providers.dart`  | `myActivitiesProvider` baca user login; `activityFeedProvider`; `activityDetailProvider(id)`. |
+| `features/activities/presentation/pages/feed_page.dart`            | Senarai feed; simpan set id yang diberi kudos (state lokal).                                  |
 | `widgets/activity_map.dart`                                  | Peta OSM, marker, polyline, animasi lukis route.                                              |
 
 ## Aliran data

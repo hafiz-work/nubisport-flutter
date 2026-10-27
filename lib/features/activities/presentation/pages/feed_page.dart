@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:share_plus/share_plus.dart';
 
-import '../../domain/activity.dart';
-import '../activity_format.dart';
-import '../activity_providers.dart';
-import 'activity_detail_page.dart';
+import '../../../../core/navigation/app_navigator.dart';
+import '../../../auth/presentation/controllers/auth_controller.dart';
+import '../controllers/activity_providers.dart';
 import '../widgets/activity_card.dart';
 import '../widgets/activity_empty_state.dart';
+import '../widgets/activity_share_sheet.dart';
 
 /// Community feed: everything from every runner.
 class FeedPage extends ConsumerStatefulWidget {
@@ -28,17 +28,7 @@ class _FeedPageState extends ConsumerState<FeedPage> {
   }
 
   void _open(String id) {
-    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ActivityDetailPage(activityId: id)));
-  }
-
-  Future<void> _share(Activity activity) async {
-    final text =
-        '${activity.userName} · ${activity.title}\n'
-        '${formatDistance(activity.distanceKm)} · ${formatDuration(activity.duration)} · '
-        '${formatPace(activity.pace)}/km\n'
-        '${activity.location}\n'
-        '#NubiSport';
-    await SharePlus.instance.share(ShareParams(text: text, subject: activity.title));
+    AppNavigator.activityDetail(context, id);
   }
 
   @override
@@ -59,38 +49,44 @@ class _FeedPageState extends ConsumerState<FeedPage> {
             children: const [
               ActivityEmptyState(
                 icon: Icons.cloud_off,
-                title: 'Tak dapat muat feed',
-                message: 'Semak sambungan anda dan cuba lagi.',
+                title: 'Couldn\'t load feed',
+                message: 'Check your connection and try again.',
               ),
             ],
           ),
-          data: (items) => ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            // Full-bleed feed: no horizontal padding, cards touch the screen edges.
-            padding: const EdgeInsets.only(top: 8, bottom: 140),
-            children: [
-              if (items.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 20),
-                  child: ActivityEmptyState(
-                    icon: Icons.groups_outlined,
-                    title: 'Feed masih kosong',
-                    message: 'Aktiviti komuniti akan muncul di sini.',
-                  ),
+          data: (items) => items.isEmpty
+              ? ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 140),
+                  children: const [
+                    ActivityEmptyState(
+                      icon: Icons.groups_outlined,
+                      title: 'Feed is empty',
+                      message: 'Community activities will appear here.',
+                    ),
+                  ],
                 )
-              else
-                for (var i = 0; i < items.length; i++) ...[
-                  ActivityCard(
-                    activity: items[i],
-                    showUser: true,
-                    kudosed: _kudosed.contains(items[i].id),
-                    onKudos: () => _toggleKudos(items[i].id),
-                    onShare: () => _share(items[i]),
-                    onTap: () => _open(items[i].id),
-                  ),
-                ],
-            ],
-          ),
+              : ListView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.only(top: 8, bottom: 140),
+                  itemCount: items.length,
+                  scrollCacheExtent: const ScrollCacheExtent.pixels(800),
+                  itemBuilder: (context, index) {
+                    final activity = items[index];
+                    return ActivityCard(
+                      activity: activity,
+                      showUser: true,
+                      kudosed: _kudosed.contains(activity.id),
+                      onKudos: () => _toggleKudos(activity.id),
+                      onShare: () => showActivityShareSheet(
+                        context,
+                        activity,
+                        isMine: ref.read(authControllerProvider).value?.id == activity.userId,
+                      ),
+                      onTap: () => _open(activity.id),
+                    );
+                  },
+                ),
         ),
       ),
     );

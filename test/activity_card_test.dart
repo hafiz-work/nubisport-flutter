@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nubisport_flutter/features/activities/domain/activity.dart';
+import 'package:nubisport_flutter/features/activities/domain/models/activity.dart';
 import 'package:nubisport_flutter/features/activities/presentation/widgets/activity_card.dart';
 import 'package:nubisport_flutter/features/activities/presentation/widgets/activity_map.dart';
 
@@ -15,7 +15,7 @@ void main() {
     final activity = Activity(
       id: 'map-tap',
       userId: 1,
-      userName: 'Ahli Demo',
+      userName: 'Demo Member',
       title: 'Test Run',
       type: ActivityType.run,
       startedAt: DateTime.now(),

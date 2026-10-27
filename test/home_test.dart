@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nubisport_flutter/core/theme/app_theme.dart';
-import 'package:nubisport_flutter/features/activities/domain/activity.dart';
-import 'package:nubisport_flutter/features/activities/presentation/activity_providers.dart';
-import 'package:nubisport_flutter/features/auth/domain/app_user.dart';
+import 'package:nubisport_flutter/features/activities/domain/models/activity.dart';
+import 'package:nubisport_flutter/features/activities/presentation/controllers/activity_providers.dart';
+import 'package:nubisport_flutter/features/auth/domain/models/app_user.dart';
 import 'package:nubisport_flutter/features/home/home_page.dart';
 
 void main() {
@@ -17,7 +17,7 @@ void main() {
     final activity = Activity(
       id: 't1',
       userId: 1,
-      userName: 'Ahli Demo',
+      userName: 'Demo Member',
       title: 'Test Run',
       type: ActivityType.run,
       startedAt: DateTime.now().subtract(const Duration(days: 1)),
@@ -36,20 +36,20 @@ void main() {
         child: MaterialApp(
           theme: AppTheme.light,
           home: const HomePage(
-            user: AppUser(id: 1, name: 'Ahli Demo', email: 'ahli@nubi.test', role: 'user', apps: {'nubi': 'ahli'}),
+            user: AppUser(id: 1, name: 'Demo Member', email: 'ahli@nubi.test', role: 'user', apps: {'nubi': 'ahli'}),
           ),
         ),
       ),
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Ahli Demo'), findsOneWidget);
-    expect(find.text('Ahli Nubi'), findsOneWidget);
-    expect(find.text('Ringkasan 7 hari terakhir'), findsOneWidget);
-    expect(find.text('Pintasan'), findsOneWidget);
-    expect(find.text('Aktiviti terkini'), findsOneWidget);
+    expect(find.text('Demo Member'), findsOneWidget);
+    expect(find.text('Nubi Member'), findsOneWidget);
+    expect(find.text('Last 7 days summary'), findsOneWidget);
+    expect(find.text('Shortcuts'), findsOneWidget);
+    expect(find.text('Recent activities'), findsOneWidget);
     expect(find.text('Test Run'), findsOneWidget);
-    expect(find.text('Lihat semua'), findsOneWidget);
+    expect(find.text('See all'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

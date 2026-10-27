@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nubisport_flutter/features/plans/domain/training_plan.dart';
+import 'package:nubisport_flutter/features/plans/domain/models/training_plan.dart';
 
 void main() {
   test('builds a 12-week 3-day plan ending with the 5K test', () {

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/widgets/brand.dart';
-import '../../domain/auth_repository.dart';
+import '../../domain/repositories/auth_repository.dart';
 import '../controllers/auth_controller.dart';
+import '../widgets/auth_error_box.dart';
 
 class ForgotPasswordPage extends ConsumerStatefulWidget {
   const ForgotPasswordPage({super.key});
@@ -47,7 +47,7 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Lupa kata laluan')),
+      appBar: AppBar(title: const Text('Forgot password')),
       body: SafeArea(
         child: GestureDetector(
           onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
@@ -67,20 +67,20 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
                               const Center(child: BrandCrest(size: 100)),
                               const SizedBox(height: 24),
                               Text(
-                                'Lupa kata laluan',
+                                'Forgot password',
                                 style: theme.textTheme.headlineLarge,
                                 textAlign: TextAlign.center,
                               ),
                               const SizedBox(height: 6),
                               Text(
-                                'Masukkan e-mel akaun anda. Kalau akaun itu wujud, kami hantar pautan reset ke e-mel itu.',
+                                'Enter your account email. If the account exists, we\'ll send a reset link to that email.',
                                 style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                                 textAlign: TextAlign.center,
                               ),
                               const SizedBox(height: 28),
                               TextFormField(
                                 controller: _email,
-                                decoration: const InputDecoration(labelText: 'E-mel', counterText: ''),
+                                decoration: const InputDecoration(labelText: 'Email', counterText: ''),
                                 keyboardType: TextInputType.emailAddress,
                                 textInputAction: TextInputAction.done,
                                 autofillHints: const [AutofillHints.email],
@@ -90,12 +90,10 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
                                 onFieldSubmitted: (_) => _submit(),
                                 validator: (v) {
                                   final value = v?.trim() ?? '';
-                                  return (!value.contains('@') || value.length > 255)
-                                      ? 'Masukkan e-mel yang sah.'
-                                      : null;
+                                  return (!value.contains('@') || value.length > 255) ? 'Enter a valid email.' : null;
                                 },
                               ),
-                              if (_error != null) ...[const SizedBox(height: 16), _ErrorBox(message: _error!)],
+                              if (_error != null) ...[const SizedBox(height: 16), AuthErrorBox(message: _error!)],
                               const SizedBox(height: 24),
                               FilledButton(
                                 onPressed: _busy ? null : _submit,
@@ -104,12 +102,12 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
                                         dimension: 20,
                                         child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
                                       )
-                                    : const Text('Hantar pautan reset'),
+                                    : const Text('Send reset link'),
                               ),
                               const SizedBox(height: 8),
                               TextButton(
                                 onPressed: _busy ? null : () => Navigator.of(context).pop(),
-                                child: const Text('Ingat kata laluan? Log masuk'),
+                                child: const Text('Remember your password? Log in'),
                               ),
                             ],
                           ),
@@ -136,47 +134,25 @@ class _ResetSent extends StatelessWidget {
       children: [
         Icon(Icons.mark_email_read_outlined, size: 64, color: theme.colorScheme.primary),
         const SizedBox(height: 20),
-        Text('Semak e-mel anda', style: theme.textTheme.headlineMedium, textAlign: TextAlign.center),
+        Text('Check your email', style: theme.textTheme.headlineMedium, textAlign: TextAlign.center),
         const SizedBox(height: 12),
         Text(
-          'Kalau e-mel ini ada akaun, pautan reset sedang dihantar. '
-          'Semak peti masuk dan folder spam. Pautan sah 1 jam.',
+          'If this email has an account, a reset link is on its way. '
+          'Check your inbox and spam folder. The link is valid for 1 hour.',
           style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 28),
-        FilledButton(onPressed: onBack, child: const Text('Kembali ke log masuk')),
+        FilledButton(onPressed: onBack, child: const Text('Back to log in')),
       ],
-    );
-  }
-}
-
-class _ErrorBox extends StatelessWidget {
-  const _ErrorBox({required this.message});
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Semantics(
-      liveRegion: true,
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: scheme.errorContainer,
-          borderRadius: BorderRadius.circular(AppTheme.radius),
-          border: Border.all(color: scheme.error.withValues(alpha: 0.4)),
-        ),
-        child: Text(message, style: TextStyle(color: scheme.onErrorContainer)),
-      ),
     );
   }
 }
 
 /// Same wording as the web forgot-password page (nubisport-astro src/pages/forgot-password.astro).
 String forgotPasswordMessage(AuthFailureReason reason) => switch (reason) {
-  AuthFailureReason.invalidEmail => 'Masukkan e-mel yang sah.',
-  AuthFailureReason.rateLimited => 'Terlalu banyak cubaan. Tunggu seminit.',
-  AuthFailureReason.network => 'Tiada sambungan. Semak internet anda dan cuba lagi.',
-  _ => 'Tak dapat hantar sekarang. Cuba lagi sekejap.',
+  AuthFailureReason.invalidEmail => 'Enter a valid email.',
+  AuthFailureReason.rateLimited => 'Too many attempts. Wait a minute.',
+  AuthFailureReason.network => 'No connection. Check your internet and try again.',
+  _ => 'Can\'t send right now. Try again shortly.',
 };

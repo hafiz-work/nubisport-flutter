@@ -9,7 +9,7 @@ import 'package:latlong2/latlong.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/widgets/family_bottom_sheet/family_modal_sheet.dart';
-import '../../domain/activity.dart';
+import '../../domain/models/activity.dart';
 import '../activity_format.dart';
 
 /// Map for an activity. List previews use free OSM raster tiles; the detail map
@@ -65,7 +65,12 @@ class ActivityMap extends StatefulWidget {
   State<ActivityMap> createState() => _ActivityMapState();
 }
 
-class _ActivityMapState extends State<ActivityMap> with TickerProviderStateMixin {
+class _ActivityMapState extends State<ActivityMap> with TickerProviderStateMixin, AutomaticKeepAliveClientMixin {
+  // Static list previews are costly to rebuild (map + tiles), so keep them alive while scrolling.
+  // shortcut: keeps every seen preview in memory, add a cap when the feed paginates.
+  @override
+  bool get wantKeepAlive => !widget.interactive;
+
   static const _distance = Distance();
   // Shared by the line and its direction arrows so they always match.
   static const _routeColor = AppColors.orange;
@@ -83,26 +88,55 @@ class _ActivityMapState extends State<ActivityMap> with TickerProviderStateMixin
   bool _styleLoading = false;
   int _styleToken = 0;
 
-  List<LatLng> get _route => [for (final point in widget.activity.route) LatLng(point.latitude, point.longitude)];
+  late List<LatLng> _routePoints;
 
-  bool get _hasRoute => _route.length > 1;
+  /// Distance from the start to each route point, so per-frame drawing is a binary search.
+  List<double> _cumulative = const [];
+  ({double t, List<LatLng> points, LatLng? tip})? _lastPartial;
+  List<({LatLng point, double bearing, double at})> _arrowPoints = const [];
+
+  List<LatLng> get _route => _routePoints;
+
+  bool get _hasRoute => _routePoints.length > 1;
   bool get _animate => widget.animateRoute && _hasRoute;
+
+  void _setRoute() {
+    _routePoints = [for (final point in widget.activity.route) LatLng(point.latitude, point.longitude)];
+    var total = 0.0;
+    _cumulative = [
+      for (var i = 0; i < _routePoints.length; i++)
+        total += i == 0 ? 0 : _distance.as(LengthUnit.Meter, _routePoints[i - 1], _routePoints[i]),
+    ];
+    _lastPartial = null;
+  }
+
+  /// Eased progress of the intro line, shared by the line and marker layers.
+  double get _progress => Curves.easeInOutSine.transform(_controller.value);
+
+  void _scheduleIntro({Duration? delay}) {
+    if (!_animate || _controller.value > 0 || _controller.isAnimating) return;
+    _startTimer?.cancel();
+    _startTimer = Timer(delay ?? widget.introDelay, () {
+      if (mounted) _controller.forward();
+    });
+  }
 
   @override
   void initState() {
     super.initState();
+    _setRoute();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2400),
+      // Strava-like pace: slow enough to follow the route being drawn.
+      duration: const Duration(milliseconds: 4500),
       value: _animate ? 0 : 1,
     );
     _cameraController = AnimationController(vsync: this, duration: const Duration(milliseconds: 600))
       ..addListener(_onCameraTick);
-    if (_animate) {
-      _startTimer = Timer(widget.introDelay, () {
-        if (mounted) _controller.forward();
-      });
-    }
+    // Vector maps wait for their style: swapping the base layer mid-draw drops frames.
+    // Fallback in case the style request hangs.
+    _scheduleIntro(delay: widget.useVector ? const Duration(seconds: 3) : null);
+    _arrowPoints = _hasRoute ? _arrows(count: widget.interactive ? 5 : 3) : const [];
   }
 
   @override
@@ -131,17 +165,27 @@ class _ActivityMapState extends State<ActivityMap> with TickerProviderStateMixin
         _vectorStyle = style;
         _styleLoading = false;
       });
+      _scheduleIntro();
       if (previous != null) {
         WidgetsBinding.instance.addPostFrameCallback((_) => previous.dispose());
       }
     } catch (_) {
-      if (mounted && token == _styleToken) setState(() => _styleLoading = false);
+      if (mounted && token == _styleToken) {
+        setState(() => _styleLoading = false);
+        _scheduleIntro();
+      }
     }
   }
 
   @override
   void didUpdateWidget(covariant ActivityMap oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.activity.id != oldWidget.activity.id ||
+        widget.activity.route.length != oldWidget.activity.route.length ||
+        widget.interactive != oldWidget.interactive) {
+      _setRoute();
+      _arrowPoints = _hasRoute ? _arrows(count: widget.interactive ? 5 : 3) : const [];
+    }
     if (widget.focusTrigger != oldWidget.focusTrigger) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _fitRoute();
@@ -194,47 +238,48 @@ class _ActivityMapState extends State<ActivityMap> with TickerProviderStateMixin
   /// camera and markers - no rebuild, no extra delay.
   void _replay() {
     _startTimer?.cancel();
+    _startTimer = null;
     _controller.forward(from: 0);
   }
 
   /// The part of the route visible at [t] (0..1), plus the moving tip.
   ({List<LatLng> points, LatLng? tip}) _partialRoute(double t) {
+    final cached = _lastPartial;
+    if (cached != null && cached.t == t) return (points: cached.points, tip: cached.tip);
+    final result = _computePartial(t);
+    _lastPartial = (t: t, points: result.points, tip: result.tip);
+    return result;
+  }
+
+  ({List<LatLng> points, LatLng? tip}) _computePartial(double t) {
     final route = _route;
     if (route.isEmpty) return (points: const <LatLng>[], tip: null);
     if (route.length == 1 || t >= 1) return (points: route, tip: route.last);
     if (t <= 0) return (points: [route.first], tip: route.first);
 
-    final lengths = <double>[];
-    var total = 0.0;
-    for (var i = 1; i < route.length; i++) {
-      final length = _distance.as(LengthUnit.Meter, route[i - 1], route[i]);
-      lengths.add(length);
-      total += length;
-    }
+    final total = _cumulative.last;
     if (total <= 0) return (points: route, tip: route.last);
-
     final target = total * t;
-    final points = <LatLng>[route.first];
-    var covered = 0.0;
-    for (var i = 0; i < lengths.length; i++) {
-      final length = lengths[i];
-      if (covered + length <= target) {
-        points.add(route[i + 1]);
-        covered += length;
-        continue;
+
+    // First index whose cumulative distance passes the target.
+    var lo = 1, hi = route.length - 1;
+    while (lo < hi) {
+      final mid = (lo + hi) >> 1;
+      if (_cumulative[mid] < target) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
       }
-      final fraction = length == 0 ? 0.0 : (target - covered) / length;
-      final start = route[i];
-      final end = route[i + 1];
-      points.add(
-        LatLng(
-          start.latitude + (end.latitude - start.latitude) * fraction,
-          start.longitude + (end.longitude - start.longitude) * fraction,
-        ),
-      );
-      break;
     }
-    return (points: points, tip: points.last);
+    final start = route[lo - 1];
+    final end = route[lo];
+    final length = _cumulative[lo] - _cumulative[lo - 1];
+    final fraction = length == 0 ? 0.0 : (target - _cumulative[lo - 1]) / length;
+    final tip = LatLng(
+      start.latitude + (end.latitude - start.latitude) * fraction,
+      start.longitude + (end.longitude - start.longitude) * fraction,
+    );
+    return (points: [...route.sublist(0, lo), tip], tip: tip);
   }
 
   /// Evenly spaced points along the route with their heading, for direction arrows.
@@ -249,6 +294,7 @@ class _ActivityMapState extends State<ActivityMap> with TickerProviderStateMixin
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final theme = Theme.of(context);
     final activity = widget.activity;
     final route = _route;
@@ -257,10 +303,7 @@ class _ActivityMapState extends State<ActivityMap> with TickerProviderStateMixin
     // Esri Light Gray Canvas: keyless, label-free basemap so the route stands out.
     const tileUrl =
         'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}';
-    // Previews keep fewer direction arrows so the tile stays readable.
-    final arrows = _hasRoute
-        ? _arrows(count: widget.interactive ? 5 : 3)
-        : const <({LatLng point, double bearing, double at})>[];
+    final arrows = _arrowPoints;
 
     return ClipRRect(
       borderRadius: widget.borderRadius ?? BorderRadius.circular(AppTheme.radius),
@@ -304,30 +347,33 @@ class _ActivityMapState extends State<ActivityMap> with TickerProviderStateMixin
             AnimatedBuilder(
               animation: _controller,
               builder: (context, _) {
-                final partial = _partialRoute(_controller.value);
+                final partial = _partialRoute(_progress);
                 if (partial.points.length < 2) return const SizedBox.shrink();
-                return PolylineLayer(
-                  polylines: [
-                    Polyline(
-                      points: partial.points,
-                      strokeWidth: 5.5,
-                      color: _routeColor,
-                      borderStrokeWidth: 1.5,
-                      borderColor: Colors.white,
-                    ),
-                  ],
+                // Own layer so each frame repaints only the line, not the vector tiles underneath.
+                return RepaintBoundary(
+                  child: PolylineLayer(
+                    polylines: [
+                      Polyline(
+                        points: partial.points,
+                        strokeWidth: 5.5,
+                        color: _routeColor,
+                        borderStrokeWidth: 1.5,
+                        borderColor: Colors.white,
+                      ),
+                    ],
+                  ),
                 );
               },
             ),
             AnimatedBuilder(
               animation: _controller,
               builder: (context, _) {
-                final partial = _partialRoute(_controller.value);
+                final partial = _partialRoute(_progress);
                 final markers = <Marker>[];
                 if (_hasRoute) {
                   // Direction arrows appear once the growing line has passed them.
                   for (final arrow in arrows) {
-                    if (arrow.at <= _controller.value) {
+                    if (arrow.at <= _progress) {
                       markers.add(
                         _marker(
                           arrow.point,
@@ -361,7 +407,7 @@ class _ActivityMapState extends State<ActivityMap> with TickerProviderStateMixin
                     ),
                   );
                 }
-                return MarkerLayer(markers: markers);
+                return RepaintBoundary(child: MarkerLayer(markers: markers));
               },
             ),
             // Small "i" on interactive maps. Previews use a tiny text credit
@@ -372,7 +418,7 @@ class _ActivityMapState extends State<ActivityMap> with TickerProviderStateMixin
                 right: 12,
                 bottom: widget.controlsBottomInset,
                 child: Tooltip(
-                  message: 'Main semula animasi',
+                  message: 'Replay animation',
                   child: Material(
                     color: theme.colorScheme.surface.withValues(alpha: 0.94),
                     shape: const CircleBorder(),
@@ -449,22 +495,22 @@ class _MapAttribution extends StatelessWidget {
                         Icon(Icons.map_outlined, color: sheetTheme.colorScheme.primary),
                         const SizedBox(width: 10),
                         Expanded(
-                          child: Text('Credit peta', style: sheetTheme.textTheme.titleLarge?.copyWith(fontSize: 20)),
+                          child: Text('Map credit', style: sheetTheme.textTheme.titleLarge?.copyWith(fontSize: 20)),
                         ),
                       ],
                     ),
                     const SizedBox(height: 14),
                     Text(
-                      'Basemap: OpenFreeMap (vektor) / Esri Light Gray (raster).',
+                      'Basemap: OpenFreeMap (vector) / Esri Light Gray (raster).',
                       style: sheetTheme.textTheme.bodyMedium,
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Data peta © OpenStreetMap contributors (ODbL).',
+                      'Map data © OpenStreetMap contributors (ODbL).',
                       style: sheetTheme.textTheme.bodySmall?.copyWith(color: sheetTheme.colorScheme.onSurfaceVariant),
                     ),
                     const SizedBox(height: 20),
-                    OutlinedButton(onPressed: () => Navigator.of(sheetContext).pop(), child: const Text('Tutup')),
+                    OutlinedButton(onPressed: () => Navigator.of(sheetContext).pop(), child: const Text('Close')),
                   ],
                 ),
               );
