@@ -4,11 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/navigation/app_navigator.dart';
-import '../../../../core/navigation/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/widgets/family_bottom_sheet/family_modal_sheet.dart';
+import '../../domain/models/plan.dart';
 import '../controllers/plan_providers.dart';
+import 'plan_form_page.dart';
 
 class TrainingPlansPage extends ConsumerWidget {
   const TrainingPlansPage({super.key});
@@ -53,11 +54,7 @@ class TrainingPlansPage extends ConsumerWidget {
     _showPlanSheet(
       context,
       content: const _RacePlanSheet(),
-      onContinue: () {
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(const SnackBar(content: Text('Race plan builder is coming soon.')));
-      },
+      onContinue: () => AppNavigator.planBuilder(context, const PlanFormArgs(raceDate: true)),
     );
   }
 
@@ -65,7 +62,7 @@ class TrainingPlansPage extends ConsumerWidget {
     _showPlanSheet(
       context,
       content: const _Improve5kSheet(),
-      onContinue: () => AppNavigator.push<void>(context, AppRoutes.planBuilder),
+      onContinue: () => AppNavigator.planBuilder(context, const PlanFormArgs(kind: PlanKind.fiveK, tahap: '5k')),
     );
   }
 
@@ -73,7 +70,7 @@ class TrainingPlansPage extends ConsumerWidget {
     _showPlanSheet(
       context,
       content: const _StartRunningSheet(),
-      onContinue: () => AppNavigator.push<void>(context, AppRoutes.planBuilder),
+      onContinue: () => AppNavigator.planBuilder(context, const PlanFormArgs(kind: PlanKind.fiveK, tahap: 'sifar')),
     );
   }
 
@@ -90,15 +87,7 @@ class TrainingPlansPage extends ConsumerWidget {
   }
 
   void _showDistancePlans(BuildContext context) {
-    _showPlanSheet(
-      context,
-      content: const _DistancePlansSheet(),
-      onContinue: () {
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(const SnackBar(content: Text('Distance plan builder is coming soon.')));
-      },
-    );
+    _showPlanSheet(context, content: const _DistancePlansSheet(), onContinue: () => AppNavigator.planBuilder(context));
   }
 
   void _showPlanSheet(BuildContext context, {required Widget content, required VoidCallback onContinue}) {
@@ -195,7 +184,7 @@ const _plans = [
   _PlanDefinition(
     kind: _TrainingPlanKind.distance,
     title: 'Distance Plans',
-    description: 'Fully customize a plan for any distance from 5-50km.',
+    description: 'Fully customize a plan for any distance: 5K, 10K, 21K, 42K.',
     badge: '10K',
     icon: Icons.route_outlined,
     colors: [Color(0xFFDC2626), Color(0xFF991B1B)],
@@ -734,7 +723,10 @@ class _DistancePlansSheet extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 22),
-        const _Hero(title: 'Pick Your Distance.', subtitle: 'Fully customize a plan for any distance from 5km-50km.'),
+        const _Hero(
+          title: 'Pick Your Distance.',
+          subtitle: 'Fully customize a plan for any distance: 5K, 10K, 21K, 42K.',
+        ),
         const SizedBox(height: 24),
         Card(
           margin: EdgeInsets.zero,
@@ -747,7 +739,7 @@ class _DistancePlansSheet extends StatelessWidget {
                 Row(
                   children: [
                     Expanded(
-                      child: _ValueBlock(label: 'Distance', value: '5k - 50k'),
+                      child: _ValueBlock(label: 'Distance', value: '5K, 10K, 21K, 42K'),
                     ),
                     Expanded(
                       child: _ValueBlock(label: 'Length', value: '6+ weeks'),
