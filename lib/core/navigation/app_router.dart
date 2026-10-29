@@ -6,7 +6,9 @@ import '../../features/auth/domain/models/app_user.dart';
 import '../../features/auth/presentation/pages/forgot_password_page.dart';
 import '../../features/auth/presentation/pages/login_page.dart';
 import '../../features/auth/presentation/pages/register_page.dart';
-import '../../features/plans/presentation/pages/plans_page.dart';
+import '../../features/plans/domain/models/plan.dart';
+import '../../features/plans/presentation/pages/plan_form_page.dart';
+import '../../features/plans/presentation/pages/plan_view_page.dart';
 import '../../features/plans/presentation/pages/training_plans_page.dart';
 import '../../features/profile/presentation/pages/change_password_page.dart';
 import '../../features/profile/presentation/pages/edit_profile_page.dart';
@@ -49,7 +51,11 @@ abstract final class AppRouter {
       case AppRoutes.trainingPlans:
         return const TrainingPlansPage();
       case AppRoutes.planBuilder:
-        return const PlansPage();
+        final arguments = settings.arguments;
+        return PlanFormPage(args: arguments is PlanFormArgs ? arguments : const PlanFormArgs());
+      case AppRoutes.planView:
+        final plan = settings.arguments;
+        return plan is CloudPlan ? PlanViewPage(plan: plan) : null;
       case AppRoutes.changePassword:
         return const ChangePasswordPage();
       case AppRoutes.changeEmail:
