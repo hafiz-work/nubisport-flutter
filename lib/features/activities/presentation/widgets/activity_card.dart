@@ -13,6 +13,7 @@ class ActivityCard extends StatelessWidget {
     required this.onTap,
     this.showUser = false,
     this.kudosed = false,
+    this.kudosCount,
     this.onKudos,
     this.onShare,
   });
@@ -24,6 +25,9 @@ class ActivityCard extends StatelessWidget {
   final bool showUser;
 
   final bool kudosed;
+
+  /// Overrides [Activity.kudos] once the viewer toggled kudos.
+  final int? kudosCount;
   final VoidCallback? onKudos;
   final VoidCallback? onShare;
 
@@ -96,20 +100,21 @@ class ActivityCard extends StatelessWidget {
                     style: theme.textTheme.titleLarge?.copyWith(fontSize: 17),
                   ),
                   const SizedBox(height: 2),
-                  Row(
-                    children: [
-                      Icon(Icons.place_outlined, size: 13, color: scheme.onSurfaceVariant),
-                      const SizedBox(width: 3),
-                      Expanded(
-                        child: Text(
-                          activity.location,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                  if (activity.location.isNotEmpty)
+                    Row(
+                      children: [
+                        Icon(Icons.place_outlined, size: 13, color: scheme.onSurfaceVariant),
+                        const SizedBox(width: 3),
+                        Expanded(
+                          child: Text(
+                            activity.location,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
                 ],
               ),
             ),
@@ -157,16 +162,18 @@ class ActivityCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Padding(padding: const EdgeInsets.fromLTRB(16, 16, 16, 12), child: header),
-                    Stack(
-                      children: [
-                        RepaintBoundary(
-                          child: ActivityMap(activity: activity, height: 250, borderRadius: BorderRadius.zero),
-                        ),
-                        Positioned.fill(
-                          child: GestureDetector(behavior: HitTestBehavior.opaque, onTap: onTap),
-                        ),
-                      ],
-                    ),
+                    // API activities without a shared route have nothing to draw.
+                    if (activity.route.isNotEmpty)
+                      Stack(
+                        children: [
+                          RepaintBoundary(
+                            child: ActivityMap(activity: activity, height: 250, borderRadius: BorderRadius.zero),
+                          ),
+                          Positioned.fill(
+                            child: GestureDetector(behavior: HitTestBehavior.opaque, onTap: onTap),
+                          ),
+                        ],
+                      ),
                     Padding(padding: const EdgeInsets.fromLTRB(16, 14, 16, 10), child: metrics),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
@@ -175,7 +182,7 @@ class ActivityCard extends StatelessWidget {
                           TextButton.icon(
                             onPressed: onKudos,
                             icon: Icon(kudosed ? Icons.favorite : Icons.favorite_border, size: 18),
-                            label: Text('${activity.kudos + (kudosed ? 1 : 0)} kudos'),
+                            label: Text('${kudosCount ?? activity.kudos} kudos'),
                             style: actionStyle.copyWith(
                               foregroundColor: WidgetStatePropertyAll(
                                 kudosed

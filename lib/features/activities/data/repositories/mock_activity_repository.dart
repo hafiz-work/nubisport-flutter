@@ -2382,6 +2382,17 @@ class MockActivityRepository implements ActivityRepository {
     return _sorted(_activities);
   }
 
+  /// Activity ids the demo viewer gave kudos to (seeded counts exclude the viewer).
+  final Set<String> _kudosed = {};
+
+  @override
+  Future<({int count, bool mine})> setKudos(String id, {required bool on}) async {
+    await _wait();
+    final base = _activities.firstWhere((activity) => activity.id == id).kudos;
+    on ? _kudosed.add(id) : _kudosed.remove(id);
+    return (count: base + (on ? 1 : 0), mine: on);
+  }
+
   @override
   Future<Activity?> activity(String id) async {
     await _wait();

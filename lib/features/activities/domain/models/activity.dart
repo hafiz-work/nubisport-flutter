@@ -1,4 +1,4 @@
-enum ActivityType { run, walk, hike, ride }
+enum ActivityType { run, walk, hike, ride, other }
 
 /// A plain coordinate pair, so the domain does not depend on a map package.
 class GeoPoint {
@@ -24,6 +24,7 @@ class Activity {
     this.elevationGainM = 0,
     this.calories = 0,
     this.kudos = 0,
+    this.kudosed = false,
     this.notes = '',
     this.splits = const [],
   });
@@ -46,6 +47,9 @@ class Activity {
   final int elevationGainM;
   final int calories;
   final int kudos;
+
+  /// The signed-in viewer gave kudos (counted in [kudos]).
+  final bool kudosed;
   final String notes;
 
   /// One split per kilometre (time for that km).

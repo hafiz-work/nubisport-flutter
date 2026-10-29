@@ -145,7 +145,9 @@ class _ActivityDetailState extends State<_ActivityDetail> {
             return Stack(
               children: [
                 Positioned.fill(
-                  child: can3d
+                  child: activity.route.isEmpty
+                      ? ColoredBox(color: theme.colorScheme.surfaceContainer)
+                      : can3d
                       ? ActivityMap3D(
                           activity: activity,
                           height: height,
@@ -389,20 +391,21 @@ class _AuthorRow extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 2),
-              Row(
-                children: [
-                  Icon(Icons.place_outlined, size: 13, color: scheme.onSurfaceVariant),
-                  const SizedBox(width: 4),
-                  Flexible(
-                    child: Text(
-                      activity.location,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+              if (activity.location.isNotEmpty)
+                Row(
+                  children: [
+                    Icon(Icons.place_outlined, size: 13, color: scheme.onSurfaceVariant),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        activity.location,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
             ],
           ),
         ),
