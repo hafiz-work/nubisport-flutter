@@ -61,7 +61,8 @@ class AuthRepositoryImpl implements AuthRepository {
   }) => remote.register(name: name, email: email, password: password, captchaToken: captchaToken);
 
   @override
-  Future<void> forgotPassword({required String email}) => remote.forgotPassword(email: email);
+  Future<void> forgotPassword({required String email, String? captchaToken}) =>
+      remote.forgotPassword(email: email, captchaToken: captchaToken);
 
   @override
   Future<AppUser> updateProfile({

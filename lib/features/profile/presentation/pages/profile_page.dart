@@ -369,7 +369,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> with SingleTickerProv
     if (async.isLoading)
       const Padding(
         padding: EdgeInsets.symmetric(vertical: 24),
-        child: Center(child: CircularProgressIndicator()),
+        child: Center(child: CircularProgressIndicator.adaptive()),
       )
     else if (activities.isEmpty)
       const Padding(

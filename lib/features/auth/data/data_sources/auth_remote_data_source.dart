@@ -15,7 +15,7 @@ abstract interface class AuthRemoteDataSource {
 
   /// No tokens are returned: the account needs email verification before login.
   Future<void> register({required String name, required String email, required String password, String? captchaToken});
-  Future<void> forgotPassword({required String email});
+  Future<void> forgotPassword({required String email, String? captchaToken});
   Future<AppUser> updateProfile({
     required String name,
     required String username,
@@ -69,9 +69,12 @@ class DioAuthRemoteDataSource implements AuthRemoteDataSource {
   }
 
   @override
-  Future<void> forgotPassword({required String email}) async {
+  Future<void> forgotPassword({required String email, String? captchaToken}) async {
     try {
-      await _dio.post<Map<String, dynamic>>('/auth/forgot-password', data: {'email': email, 'app': 'nubi'});
+      await _dio.post<Map<String, dynamic>>(
+        '/auth/forgot-password',
+        data: {'email': email, 'app': 'nubi', 'captchaToken': ?captchaToken},
+      );
     } on DioException catch (e) {
       throw AuthFailure(forgotPasswordFailureReason(e));
     }
@@ -190,10 +193,13 @@ AuthFailureReason registerFailureReason(DioException e) {
   return AuthFailureReason.unknown;
 }
 
-/// Same reading as the web forgot-password form: only a 400 (bad email) and 429 are special.
+/// Same reading as the web forgot-password form: a captcha failure, a 400 (bad email) and 429 are special.
 AuthFailureReason forgotPasswordFailureReason(DioException e) {
   final status = e.response?.statusCode;
   if (status == null) return AuthFailureReason.network;
+  final body = e.response?.data;
+  final error = body is Map ? '${body['error'] ?? ''}'.toLowerCase() : '';
+  if (error.contains('captcha')) return AuthFailureReason.captcha;
   if (status == 400) return AuthFailureReason.invalidEmail;
   if (status == 429) return AuthFailureReason.rateLimited;
   return AuthFailureReason.unknown;

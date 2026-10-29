@@ -44,6 +44,10 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# setup.sh copies the built apk/aab here
+/apk/
+/aab/
+
 # envied inputs (build-time config) - .env.example is the template
 .env.dev
 .env.prod

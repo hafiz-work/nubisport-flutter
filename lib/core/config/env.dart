@@ -14,6 +14,8 @@ abstract final class DevEnv {
   static const String webOrigin = _DevEnv.webOrigin;
   @EnviedField(varName: 'IS_MOCK', defaultValue: false)
   static const bool isMock = _DevEnv.isMock;
+  @EnviedField(varName: 'TURNSTILE_SITE_KEY', defaultValue: '')
+  static const String turnstileSiteKey = _DevEnv.turnstileSiteKey;
 }
 
 @Envied(path: '.env.prod', name: 'ProdEnv')
@@ -24,4 +26,6 @@ abstract final class ProdEnv {
   static const String webOrigin = _ProdEnv.webOrigin;
   @EnviedField(varName: 'IS_MOCK', defaultValue: false)
   static const bool isMock = _ProdEnv.isMock;
+  @EnviedField(varName: 'TURNSTILE_SITE_KEY', defaultValue: '')
+  static const String turnstileSiteKey = _ProdEnv.turnstileSiteKey;
 }

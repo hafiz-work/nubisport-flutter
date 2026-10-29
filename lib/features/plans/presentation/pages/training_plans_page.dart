@@ -1242,7 +1242,7 @@ class _MyPlans extends ConsumerWidget {
     final theme = Theme.of(context);
     return plans.when(
       loading: () => const Center(
-        child: Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator()),
+        child: Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator.adaptive()),
       ),
       error: (_, _) => Row(
         children: [

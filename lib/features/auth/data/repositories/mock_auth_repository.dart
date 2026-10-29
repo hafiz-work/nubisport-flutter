@@ -74,7 +74,7 @@ class MockAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<void> forgotPassword({required String email}) => _wait();
+  Future<void> forgotPassword({required String email, String? captchaToken}) => _wait();
 
   @override
   Future<AppUser> updateProfile({

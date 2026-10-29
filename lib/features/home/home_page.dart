@@ -81,7 +81,7 @@ class HomePage extends ConsumerWidget {
           if (activities.isLoading)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 24),
-              child: Center(child: CircularProgressIndicator()),
+              child: Center(child: CircularProgressIndicator.adaptive()),
             )
           else if (recent.isEmpty)
             const _EmptyActivity()

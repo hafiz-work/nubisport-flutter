@@ -8,6 +8,7 @@ import '../../../../shared/widgets/brand.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../controllers/auth_controller.dart';
 import '../widgets/auth_error_box.dart';
+import '../widgets/captcha.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
@@ -46,7 +47,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       _error = null;
     });
     try {
-      await ref.read(authControllerProvider.notifier).login(email: _email.text.trim(), password: _password.text);
+      final captchaToken = await ref.read(captchaSolverProvider)('login');
+      if (captchaToken == null) throw const AuthFailure(AuthFailureReason.captcha);
+      await ref
+          .read(authControllerProvider.notifier)
+          .login(email: _email.text.trim(), password: _password.text, captchaToken: captchaToken);
     } on AuthFailure catch (e) {
       if (mounted) setState(() => _error = loginMessage(e.reason));
     } finally {
@@ -207,7 +212,7 @@ String loginMessage(AuthFailureReason reason) => switch (reason) {
   AuthFailureReason.invalidCredentials => 'Incorrect email or password.',
   AuthFailureReason.emailUnverified => 'Verify your email first - check your inbox for the verification link.',
   AuthFailureReason.banned => 'This account is suspended. Contact a Nubi admin.',
-  AuthFailureReason.captcha => 'Spam check failed. App login is not enabled for this server yet.',
+  AuthFailureReason.captcha => 'Spam check failed. Try again.',
   AuthFailureReason.rateLimited => 'Too many attempts. Wait a minute.',
   AuthFailureReason.network => 'No connection. Check your internet and try again.',
   _ => 'Can\'t log in right now. Try again shortly.',

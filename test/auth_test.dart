@@ -2,7 +2,9 @@ import 'package:dio/dio.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nubisport_flutter/core/config/app_config.dart';
 import 'package:nubisport_flutter/core/database/app_database.dart';
 import 'package:nubisport_flutter/core/network/session_cookies.dart';
 import 'package:nubisport_flutter/core/storage/token_storage.dart';
@@ -14,6 +16,8 @@ import 'package:nubisport_flutter/features/auth/data/data_sources/user_local_dat
 import 'package:nubisport_flutter/features/auth/domain/models/app_user.dart';
 import 'package:nubisport_flutter/features/auth/domain/repositories/auth_repository.dart';
 import 'package:nubisport_flutter/features/auth/presentation/pages/login_page.dart';
+import 'package:nubisport_flutter/features/auth/presentation/widgets/captcha.dart';
+import 'package:nubisport_flutter/flavors.dart';
 
 class MemoryTokenStorage implements TokenStorage {
   AuthTokens? value;
@@ -30,6 +34,7 @@ class FakeRemote implements AuthRemoteDataSource {
   DioException? meError;
   bool logoutFails = false;
   int logoutCalls = 0;
+  final loginTokens = <String?>[];
 
   @override
   Future<({AuthTokens tokens, AppUser user})> login({
@@ -37,6 +42,7 @@ class FakeRemote implements AuthRemoteDataSource {
     required String password,
     String? captchaToken,
   }) async {
+    loginTokens.add(captchaToken);
     if (password != 'right') {
       throw const AuthFailure(AuthFailureReason.invalidCredentials);
     }
@@ -56,7 +62,7 @@ class FakeRemote implements AuthRemoteDataSource {
   }
 
   @override
-  Future<void> forgotPassword({required String email}) async {
+  Future<void> forgotPassword({required String email, String? captchaToken}) async {
     if (email == 'bad') throw const AuthFailure(AuthFailureReason.invalidEmail);
   }
 
@@ -161,6 +167,10 @@ void main() {
       expect(forgotPasswordFailureReason(status(400)), AuthFailureReason.invalidEmail);
       expect(forgotPasswordFailureReason(status(429)), AuthFailureReason.rateLimited);
       expect(forgotPasswordFailureReason(offline()), AuthFailureReason.network);
+      expect(
+        forgotPasswordFailureReason(status(400, {'error': 'Captcha verification failed.'})),
+        AuthFailureReason.captcha,
+      );
     });
   });
 
@@ -292,7 +302,10 @@ void main() {
     );
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [authRepositoryProvider.overrideWithValue(repo)],
+        overrides: [
+          authRepositoryProvider.overrideWithValue(repo),
+          captchaSolverProvider.overrideWithValue((_) async => 'tok'),
+        ],
         child: MaterialApp(theme: AppTheme.light, home: const LoginPage()),
       ),
     );
@@ -302,5 +315,61 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Log in'));
     await tester.pumpAndSettle();
     expect(find.text('Incorrect email or password.'), findsOneWidget);
+  });
+
+  group('login captcha', () {
+    Future<FakeRemote> logIn(WidgetTester tester, {required List<Override> overrides}) async {
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      final remote = FakeRemote();
+      final repo = AuthRepositoryImpl(
+        remote: remote,
+        local: DriftUserLocalDataSource(db),
+        tokens: MemoryTokenStorage(),
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [authRepositoryProvider.overrideWithValue(repo), ...overrides],
+          child: MaterialApp(theme: AppTheme.light, home: const LoginPage()),
+        ),
+      );
+      await tester.enterText(find.byType(TextFormField).at(1), 'right');
+      await tester.tap(find.widgetWithText(FilledButton, 'Log in'));
+      await tester.pumpAndSettle();
+      return remote;
+    }
+
+    testWidgets('sends the token the sheet returned', (tester) async {
+      final actions = <String>[];
+      final remote = await logIn(
+        tester,
+        overrides: [
+          captchaSolverProvider.overrideWithValue((action) async {
+            actions.add(action);
+            return 'tok-123';
+          }),
+        ],
+      );
+      expect(actions, ['login']);
+      expect(remote.loginTokens, ['tok-123']);
+    });
+
+    testWidgets('a failed check makes no API call and says so', (tester) async {
+      final remote = await logIn(tester, overrides: [captchaSolverProvider.overrideWithValue((_) async => null)]);
+      expect(remote.loginTokens, isEmpty);
+      expect(find.text('Spam check failed. Try again.'), findsOneWidget);
+    });
+
+    testWidgets('mock mode skips the captcha', (tester) async {
+      final remote = await logIn(
+        tester,
+        overrides: [
+          appConfigProvider.overrideWithValue(
+            const AppConfig(flavor: Flavor.dev, apiBaseUrl: '', webOrigin: '', isMock: true),
+          ),
+        ],
+      );
+      expect(remote.loginTokens, hasLength(1));
+    });
   });
 }
