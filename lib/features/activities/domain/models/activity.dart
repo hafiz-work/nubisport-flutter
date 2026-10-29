@@ -62,6 +62,7 @@ class Activity {
     this.maxHr,
     this.weather,
     this.samples = const [],
+    this.chartsMissing,
   });
 
   final String id;
@@ -98,6 +99,9 @@ class Activity {
 
   /// Downsampled streams for the elevation/pace/heart-rate charts; empty when not shared.
   final List<ActivitySample> samples;
+
+  /// Why [samples] is empty (records not found or unreadable); shown in debug builds only.
+  final String? chartsMissing;
 
   Duration get pace {
     if (distanceKm <= 0) return Duration.zero;

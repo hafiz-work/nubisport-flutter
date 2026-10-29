@@ -17,10 +17,7 @@ const _me = AppUser(
 );
 
 ApiActivityRepository _repo(Map<String, (int, Object)> routes) =>
-    ApiActivityRepository(
-      Dio()..httpClientAdapter = FakeAdapter(routes),
-      currentUser: () => _me,
-    );
+    ApiActivityRepository(Dio()..httpClientAdapter = FakeAdapter(routes));
 
 void main() {
   const own = {
@@ -60,7 +57,7 @@ void main() {
             },
           },
         ),
-      }).myActivities(userId: 7);
+      }).myActivities(user: _me);
 
       // ?preview=1 rows: the map shape and kudos count for the profile cards.
       expect(items.first.route.length, 2);
@@ -110,8 +107,7 @@ void main() {
       });
       final items = await ApiActivityRepository(
         Dio()..httpClientAdapter = adapter,
-        currentUser: () => _me,
-      ).myActivities(userId: 7);
+      ).myActivities(user: _me);
 
       expect(items.single.route, hasLength(150));
       final saved =
@@ -119,6 +115,52 @@ void main() {
       expect(saved['visibility'], 'private');
       expect(saved['shareHr'], false);
       expect(saved['preview'], hasLength(150));
+    },
+  );
+
+  test(
+    'own shared activity charts come from our own .fit, not the copy (like the web)',
+    () async {
+      final a = (await _repo({
+        'GET /me/apps/nubi/feed/12': (
+          200,
+          {
+            'success': true,
+            'data': {...own, 'own': true},
+          },
+        ),
+        // A copy with nothing chartable must not win over the file.
+        'GET /me/apps/nubi/feed/12/records': (
+          200,
+          {
+            'timestamp': [0, 1000],
+          },
+        ),
+        'GET /me/apps/nubi/activities/12/file': (
+          200,
+          File('test/fixtures/walk.fit').readAsBytesSync(),
+        ),
+      }).activity('12', viewer: _me))!;
+      expect(
+        a.samples.where((s) => s.altitudeM != null).length,
+        greaterThan(100),
+      );
+      expect(a.chartsMissing, isNull);
+    },
+  );
+
+  test(
+    'a copy in another shape counts as none, with the reason kept',
+    () async {
+      final a = (await _repo({
+        'GET /me/apps/nubi/feed/12': (200, {'success': true, 'data': own}),
+        'GET /me/apps/nubi/feed/12/records': (
+          200,
+          {'success': true, 'data': {}},
+        ),
+      }).activity('12', viewer: _me))!;
+      expect(a.samples, isEmpty);
+      expect(a.chartsMissing, contains('no timestamp'));
     },
   );
 
@@ -156,7 +198,7 @@ void main() {
           },
         },
       ),
-    }).feed();
+    }).feed(viewer: _me);
 
     expect(feed.single.userName, 'Zul');
     expect(feed.single.userId, 0);
@@ -190,12 +232,12 @@ void main() {
         ),
       });
 
-      final detail = await repo.activity('12');
+      final detail = await repo.activity('12', viewer: _me);
       expect(detail?.id, '12');
       expect(detail?.userName, 'Aina');
       expect(detail?.route, isEmpty);
-      expect(await repo.activity('99'), isNull);
-      expect(await repo.activity('a1'), isNull);
+      expect(await repo.activity('99', viewer: _me), isNull);
+      expect(await repo.activity('a1', viewer: _me), isNull);
     },
   );
 
@@ -235,7 +277,7 @@ void main() {
             'speed': [4.17, 4.17, 4.17, 4.17, 4.17],
           },
         ),
-      }).activity('12');
+      }).activity('12', viewer: _me);
 
       expect(detail!.route.length, 5);
       expect(detail.route.last.latitude, closeTo(3.04, 1e-6));
@@ -286,7 +328,7 @@ void main() {
           {'success': false, 'error': 'Feed unavailable'},
         ),
       });
-      expect(repo.activity('12'), throwsA(isA<DioException>()));
+      expect(repo.activity('12', viewer: _me), throwsA(isA<DioException>()));
     },
   );
 }

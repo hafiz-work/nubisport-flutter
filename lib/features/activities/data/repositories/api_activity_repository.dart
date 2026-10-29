@@ -14,14 +14,11 @@ import '../fit_records.dart';
 /// The API has no place name, calories or notes. Route, splits and chart streams come from the
 /// owner's shared records (/feed/:id/records), or for own activities from the original .fit.
 class ApiActivityRepository implements ActivityRepository {
-  ApiActivityRepository(this._dio, {required this.currentUser});
+  ApiActivityRepository(this._dio);
   final Dio _dio;
 
-  /// The signed-in user: own activities from the API carry no author name.
-  final AppUser? Function() currentUser;
-
   @override
-  Future<List<Activity>> myActivities({required int userId}) async {
+  Future<List<Activity>> myActivities({required AppUser user}) async {
     // shortcut: whole history in one call (server caps at 5000 per member), page by date range if it gets slow.
     final res = await _dio.get<Map<String, dynamic>>(
       '/me/apps/nubi/activities',
@@ -44,7 +41,8 @@ class ApiActivityRepository implements ActivityRepository {
         await _fillPreview(row);
       }
     }());
-    final items = [for (final row in rows) ownFromJson(row, currentUser())];
+    // Own rows carry no author: the name and id come from the signed-in user.
+    final items = [for (final row in rows) ownFromJson(row, user)];
     return items..sort((a, b) => b.startedAt.compareTo(a.startedAt));
   }
 
@@ -52,7 +50,7 @@ class ApiActivityRepository implements ActivityRepository {
 
   /// Sets row['preview'] from the .fit and stores it, keeping the row's own sharing settings.
   Future<void> _fillPreview(Map<String, dynamic> row) async {
-    final records = await _fitRecordsOrNull('${row['id']}');
+    final records = (await _fitRecords('${row['id']}')).columns;
     final preview = records == null
         ? const <List<double>>[]
         : routePreview(parseRecords(records).route);
@@ -73,42 +71,52 @@ class ApiActivityRepository implements ActivityRepository {
   }
 
   @override
-  Future<List<Activity>> feed() async {
+  Future<List<Activity>> feed({AppUser? viewer}) async {
     // shortcut: first page only (server default limit), follow `next` when the feed page gets infinite scroll.
     final res = await _dio.get<Map<String, dynamic>>('/me/apps/nubi/feed');
     final rows = (res.data?['data']?['items'] as List?) ?? const [];
     return [
       for (final row in rows.cast<Map<String, dynamic>>())
-        feedFromJson(row, currentUser()),
+        feedFromJson(row, viewer),
     ];
   }
 
   /// Feed detail first (it has the author and route); own private activities are only in /activities.
   @override
-  Future<Activity?> activity(String id) async {
+  Future<Activity?> activity(String id, {AppUser? viewer}) async {
     if (int.tryParse(id) == null) return null;
     final shared = await _getOrNull('/me/apps/nubi/feed/$id');
     if (shared != null) {
-      Map<String, dynamic>? records = await _recordsOrNull(
-        '/me/apps/nubi/feed/$id/records',
-      );
-      // The server builds missing copies from the owner's .fit; this only covers our own
-      // activity when that failed (e.g. too many records for a copy).
-      if (records == null) debugPrint('activity $id: no members\' copy (404)');
-      if (records == null && shared['own'] == true) {
-        records = await _fitRecordsOrNull(id);
+      // Like the web: our own activity reads our own .fit; members read the owner's copy.
+      final copy = '/me/apps/nubi/feed/$id/records';
+      var records = shared['own'] == true
+          ? await _fitRecords(id)
+          : await _copyRecords(copy);
+      if (records.columns == null && shared['own'] == true) {
+        final fallback = await _copyRecords(copy);
+        if (fallback.columns != null) records = fallback;
       }
-      return feedFromJson(shared, currentUser(), records: records);
+      return feedFromJson(
+        shared,
+        viewer,
+        records: records.columns,
+        recordsMissing: records.missing,
+      );
     }
     final own = await _getOrNull('/me/apps/nubi/activities/$id');
-    return own == null
-        ? null
-        : ownFromJson(own, currentUser(), records: await _fitRecordsOrNull(id));
+    if (own == null) return null;
+    final records = await _fitRecords(id);
+    return ownFromJson(
+      own,
+      viewer,
+      records: records.columns,
+      recordsMissing: records.missing,
+    );
   }
 
-  /// Own original .fit decoded to record columns; null when missing or unreadable - the
-  /// summary still shows, only the charts are left out.
-  Future<Map<String, dynamic>?> _fitRecordsOrNull(String id) async {
+  /// Own original .fit decoded to record columns, or why not - the summary still shows, only
+  /// the charts are left out.
+  Future<_Records> _fitRecords(String id) async {
     try {
       final res = await _dio.get<List<int>>(
         '/me/apps/nubi/activities/$id/file',
@@ -117,15 +125,31 @@ class ApiActivityRepository implements ActivityRepository {
       final bytes = Uint8List.fromList(res.data ?? const []);
       // Off the UI isolate: a long activity is tens of thousands of records.
       final columns = await compute(fitRecordColumns, bytes);
-      if (columns == null) {
-        debugPrint('activity $id: .fit has no records (${bytes.length} bytes)');
-      }
-      return columns;
-    } on DioException catch (e) {
-      debugPrint(
-        'activity $id: .fit not loaded (${e.response?.statusCode ?? e.type})',
+      return (
+        columns: columns,
+        missing: columns == null
+            ? '.fit has no records (${bytes.length} bytes)'
+            : null,
       );
-      return null;
+    } on DioException catch (e) {
+      return (
+        columns: null,
+        missing: '.fit not loaded (${e.response?.statusCode ?? e.type})',
+      );
+    }
+  }
+
+  /// The owner's copy: raw JSON (no { success, data } envelope); any other shape counts as no
+  /// copy, as on the web.
+  Future<_Records> _copyRecords(String path) async {
+    try {
+      final data = (await _dio.get<Map<String, dynamic>>(path)).data;
+      if (data?['timestamp'] is List) return (columns: data, missing: null);
+      return (columns: null, missing: 'members\' copy has no timestamp column');
+    } on DioException catch (e) {
+      final status = e.response?.statusCode;
+      if (status != 404 && status != 403) rethrow;
+      return (columns: null, missing: 'no members\' copy ($status)');
     }
   }
 
@@ -156,23 +180,16 @@ class ApiActivityRepository implements ActivityRepository {
       rethrow;
     }
   }
-
-  /// Raw JSON (no { success, data } envelope); 404 = shared before the copy existed.
-  Future<Map<String, dynamic>?> _recordsOrNull(String path) async {
-    try {
-      return (await _dio.get<Map<String, dynamic>>(path)).data;
-    } on DioException catch (e) {
-      final status = e.response?.statusCode;
-      if (status == 404 || status == 403) return null;
-      rethrow;
-    }
-  }
 }
+
+/// Record columns, or why there are none.
+typedef _Records = ({Map<String, dynamic>? columns, String? missing});
 
 Activity ownFromJson(
   Map<String, dynamic> json,
   AppUser? me, {
   Map<String, dynamic>? records,
+  String? recordsMissing,
 }) {
   final track = records == null ? null : parseRecords(records);
   return _activity(
@@ -185,8 +202,18 @@ Activity ownFromJson(
     kudos: (json['kudos'] as num?)?.toInt() ?? 0,
     splits: track?.splits ?? const [],
     samples: track?.samples ?? const [],
+    chartsMissing: _chartsMissing(track, recordsMissing),
   );
 }
+
+/// Why an activity has no chart samples: the fetch's reason, or records without distance.
+String? _chartsMissing(
+  ({List<GeoPoint> route, List<Duration> splits, List<ActivitySample> samples})?
+  track,
+  String? fetch,
+) => track == null
+    ? fetch
+    : (track.samples.isEmpty ? 'records have no distance' : null);
 
 /// The list/feed route preview: [[lat, lon], ...]; empty when absent.
 List<GeoPoint> _preview(Map<String, dynamic> json) => [
@@ -198,6 +225,7 @@ Activity feedFromJson(
   Map<String, dynamic> json,
   AppUser? me, {
   Map<String, dynamic>? records,
+  String? recordsMissing,
 }) {
   final own = json['own'] == true;
   final track = records == null ? null : parseRecords(records);
@@ -216,6 +244,7 @@ Activity feedFromJson(
     kudosed: (json['kudos'] as Map<String, dynamic>?)?['mine'] == true,
     splits: track?.splits ?? const [],
     samples: track?.samples ?? const [],
+    chartsMissing: _chartsMissing(track, recordsMissing),
   );
 }
 
@@ -334,6 +363,7 @@ Activity _activity(
   bool kudosed = false,
   List<Duration> splits = const [],
   List<ActivitySample> samples = const [],
+  String? chartsMissing,
 }) {
   final type = switch (json['sport']) {
     'run' => ActivityType.run,
@@ -361,6 +391,7 @@ Activity _activity(
     kudosed: kudosed,
     splits: splits,
     samples: samples,
+    chartsMissing: chartsMissing,
     elapsed: Duration(seconds: ((json['elapsedS'] as num?) ?? 0).round()),
     avgHr: (json['avgHr'] as num?)?.round(),
     maxHr: (json['maxHr'] as num?)?.round(),

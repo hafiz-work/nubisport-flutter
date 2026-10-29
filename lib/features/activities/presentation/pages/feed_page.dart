@@ -4,9 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/navigation/app_navigator.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
-import '../../data/repositories/activity_repository_provider.dart';
 import '../../domain/models/activity.dart';
 import '../controllers/activity_providers.dart';
+import '../controllers/kudos_controller.dart';
 import '../widgets/activity_card.dart';
 import '../widgets/activity_empty_state.dart';
 import '../widgets/activity_share_sheet.dart';
@@ -20,34 +20,14 @@ class FeedPage extends ConsumerStatefulWidget {
 }
 
 class _FeedPageState extends ConsumerState<FeedPage> {
-  /// Kudos toggled on this page, on top of what the feed loaded.
-  final Map<String, ({int count, bool mine})> _kudos = {};
-
-  ({int count, bool mine}) _kudosOf(Activity activity) =>
-      _kudos[activity.id] ?? (count: activity.kudos, mine: activity.kudosed);
-
-  /// Optimistic: flip now, then keep the server's answer, or roll back if the call fails.
   Future<void> _toggleKudos(Activity activity) async {
-    final before = _kudosOf(activity);
-    final on = !before.mine;
-    setState(
-      () =>
-          _kudos[activity.id] = (count: before.count + (on ? 1 : -1), mine: on),
-    );
-    try {
-      final after = await ref
-          .read(activityRepositoryProvider)
-          .setKudos(activity.id, on: on);
-      if (mounted) setState(() => _kudos[activity.id] = after);
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _kudos[activity.id] = before);
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('Couldn\'t send kudos. Try again.')),
-        );
-    }
+    if (await ref.read(kudosProvider(activity).notifier).toggle()) return;
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(content: Text('Couldn\'t send kudos. Try again.')),
+      );
   }
 
   void _open(String id) {
@@ -100,11 +80,12 @@ class _FeedPageState extends ConsumerState<FeedPage> {
                   scrollCacheExtent: const ScrollCacheExtent.pixels(800),
                   itemBuilder: (context, index) {
                     final activity = items[index];
+                    final kudos = ref.watch(kudosProvider(activity));
                     return ActivityCard(
                       activity: activity,
                       showUser: true,
-                      kudosed: _kudosOf(activity).mine,
-                      kudosCount: _kudosOf(activity).count,
+                      kudosed: kudos.mine,
+                      kudosCount: kudos.count,
                       // The API allows no kudos on your own activity.
                       onKudos: activity.userId != 0 && activity.userId == myId
                           ? null

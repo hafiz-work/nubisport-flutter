@@ -1,6 +1,7 @@
 import '../../../../core/mock/mock_accounts.dart';
 import '../../domain/models/activity.dart';
 import '../../domain/repositories/activity_repository.dart';
+import '../../../auth/domain/models/app_user.dart';
 
 /// Seeded activities for the UI until the training API exists.
 ///
@@ -2372,13 +2373,13 @@ class MockActivityRepository implements ActivityRepository {
   ];
 
   @override
-  Future<List<Activity>> myActivities({required int userId}) async {
+  Future<List<Activity>> myActivities({required AppUser user}) async {
     await _wait();
-    return _sorted(_activities.where((activity) => activity.userId == userId));
+    return _sorted(_activities.where((activity) => activity.userId == user.id));
   }
 
   @override
-  Future<List<Activity>> feed() async {
+  Future<List<Activity>> feed({AppUser? viewer}) async {
     await _wait();
     return _sorted(_activities);
   }
@@ -2398,7 +2399,7 @@ class MockActivityRepository implements ActivityRepository {
   }
 
   @override
-  Future<Activity?> activity(String id) async {
+  Future<Activity?> activity(String id, {AppUser? viewer}) async {
     await _wait();
     for (final activity in _activities) {
       if (activity.id == id) return activity;

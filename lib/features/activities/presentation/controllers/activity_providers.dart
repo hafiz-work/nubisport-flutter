@@ -11,14 +11,16 @@ final myActivitiesProvider = FutureProvider.autoDispose<List<Activity>>((
 ) async {
   final user = ref.watch(authControllerProvider).value;
   if (user == null) return const [];
-  return ref.watch(activityRepositoryProvider).myActivities(userId: user.id);
+  return ref.watch(activityRepositoryProvider).myActivities(user: user);
 });
 
 final activityFeedProvider = FutureProvider.autoDispose<List<Activity>>((ref) {
-  return ref.watch(activityRepositoryProvider).feed();
+  final viewer = ref.watch(authControllerProvider).value;
+  return ref.watch(activityRepositoryProvider).feed(viewer: viewer);
 });
 
 final activityDetailProvider = FutureProvider.autoDispose
     .family<Activity?, String>((ref, id) {
-      return ref.watch(activityRepositoryProvider).activity(id);
+      final viewer = ref.watch(authControllerProvider).value;
+      return ref.watch(activityRepositoryProvider).activity(id, viewer: viewer);
     });

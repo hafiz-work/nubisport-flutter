@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,8 +11,8 @@ import '../../../../../core/theme/app_theme.dart';
 import '../../domain/models/activity.dart';
 import '../activity_format.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
-import '../../data/repositories/activity_repository_provider.dart';
 import '../controllers/activity_providers.dart';
+import '../controllers/kudos_controller.dart';
 import '../widgets/activity_empty_state.dart';
 import '../widgets/activity_map.dart';
 import '../widgets/activity_map_3d.dart';
@@ -108,32 +109,18 @@ class _ActivityDetailState extends ConsumerState<_ActivityDetail> {
   /// Snap size the camera was last fitted for, and the debounce that waits for the sheet to rest.
   double _settledAt = _initialSheet;
   Timer? _settleTimer;
-  late var _kudos = (
-    count: widget.activity.kudos,
-    mine: widget.activity.kudosed,
-  );
-
-  /// Optimistic like the feed: flip now, keep the server's answer, roll back on failure.
   Future<void> _toggleKudos() async {
-    final before = _kudos;
-    final on = !before.mine;
     HapticFeedback.lightImpact();
-    setState(() => _kudos = (count: before.count + (on ? 1 : -1), mine: on));
-    try {
-      final after = await ref
-          .read(activityRepositoryProvider)
-          .setKudos(widget.activity.id, on: on);
-      if (mounted) setState(() => _kudos = after);
+    if (await ref.read(kudosProvider(widget.activity).notifier).toggle()) {
       ref.invalidate(activityFeedProvider);
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _kudos = before);
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('Couldn\'t send kudos. Try again.')),
-        );
+      return;
     }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(content: Text('Couldn\'t send kudos. Try again.')),
+      );
   }
 
   @override
@@ -426,6 +413,7 @@ class _ActivityDetailState extends ConsumerState<_ActivityDetail> {
         ? null
         : activity.splits.reduce((a, b) => a < b ? a : b);
     final mine = widget.isMine;
+    final kudos = ref.watch(kudosProvider(widget.activity));
 
     return [
       _AuthorRow(activity: activity),
@@ -458,8 +446,8 @@ class _ActivityDetailState extends ConsumerState<_ActivityDetail> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             KudosBar(
-              count: _kudos.count,
-              mine: _kudos.mine,
+              count: kudos.count,
+              mine: kudos.mine,
               // The API allows no kudos on your own activity.
               onKudos: mine ? null : _toggleKudos,
               onShare: () =>
@@ -478,6 +466,15 @@ class _ActivityDetailState extends ConsumerState<_ActivityDetail> {
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
+          ),
+        ),
+      // Debug builds only: why there are no charts, so a screenshot tells us.
+      if (kDebugMode && samples.isEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Text(
+            'DEBUG no charts: ${activity.chartsMissing ?? 'mock data'}',
+            style: theme.textTheme.bodySmall?.copyWith(color: Colors.amber),
           ),
         ),
       if (hasAltitude)
