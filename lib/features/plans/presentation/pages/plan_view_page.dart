@@ -46,6 +46,7 @@ class _PlanViewPageState extends ConsumerState<PlanViewPage> {
   Future<void>? _inflight;
   bool _saving = false;
   bool _deleting = false;
+  bool _updating = false;
   bool _disposed = false;
 
   @override
@@ -72,6 +73,8 @@ class _PlanViewPageState extends ConsumerState<PlanViewPage> {
   }
 
   void _toggle(String id, bool on) {
+    // A tick while updating or deleting would be overwritten by the form's save or resurrect the plan.
+    if (_updating || _deleting) return;
     setState(() => on ? _done.add(id) : _done.remove(id));
     _timer?.cancel();
     _timer = Timer(const Duration(milliseconds: 1500), _flush);
@@ -112,21 +115,27 @@ class _PlanViewPageState extends ConsumerState<PlanViewPage> {
     final plan = _plan;
     switch (action) {
       case _Action.update:
-        await _settle();
-        if (!mounted) return;
-        final current = CloudPlan(
-          key: plan.key,
-          engine: plan.engine,
-          data: plan.data,
-          progress: _saved.toList(),
-          updatedAt: plan.updatedAt,
-        );
-        final saved = await AppNavigator.planBuilder(context, PlanFormArgs(existing: current));
-        if (saved != null && mounted) {
+        _updating = true;
+        final CloudPlan? saved;
+        try {
+          await _settle();
+          if (!mounted) return;
+          final current = CloudPlan(
+            key: plan.key,
+            engine: plan.engine,
+            data: plan.data,
+            progress: _saved.toList(),
+            updatedAt: plan.updatedAt,
+          );
+          saved = await AppNavigator.planBuilder(context, PlanFormArgs(existing: current));
+        } finally {
+          _updating = false;
+        }
+        if (saved case final s? when mounted) {
           setState(() {
-            _plan = saved;
-            _done = saved.progress.toSet();
-            _saved = saved.progress.toSet();
+            _plan = s;
+            _done = s.progress.toSet();
+            _saved = s.progress.toSet();
           });
         }
         return;
@@ -141,7 +150,7 @@ class _PlanViewPageState extends ConsumerState<PlanViewPage> {
             ],
           ),
         );
-        if (ok != true) return;
+        if (ok != true || _deleting) return;
         // A save landing after the DELETE would bring the plan back.
         _timer?.cancel();
         _deleting = true;
