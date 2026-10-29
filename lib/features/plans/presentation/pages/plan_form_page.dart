@@ -20,7 +20,6 @@ const _levels = {
   '5k': 'Can run 5 km without stopping',
 };
 const _months = [2, 3, 4, 6];
-const _raceWeeks5k = [8, 24];
 const _distanceWeeks = {
   PlanKind.tenK: [8, 10, 12, 14, 16],
   PlanKind.half: [12, 16, 20, 24],
@@ -43,24 +42,7 @@ const _profileMasa = {
 };
 const _raceKinds = {PlanKind.fiveK: '5K', PlanKind.tenK: '10K', PlanKind.half: '21K', PlanKind.full: '42K'};
 
-DateTime _add(DateTime d, int n) => DateTime(d.year, d.month, d.day + n);
-int _dow(DateTime d) => d.weekday - 1; // Monday = 0
-DateTime _startMonday(DateTime d) => _add(d, (8 - d.weekday % 7) % 7);
 String _iso(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-
-/// Port of the web's `racePlan` (plan-5k.ts): the API does not turn `lumba` into weeks, the form does.
-({DateTime mula, int weeks}) racePlan(DateTime mula, DateTime lumba, List<int> range, int hari) {
-  final shift = (_dow(lumba) - (hari == 3 ? 5 : 6)).clamp(-6, 0);
-  var monday = _startMonday(mula);
-  if (_add(monday, shift).isBefore(mula)) monday = _add(monday, 7);
-  final raceMonday = _add(lumba, -_dow(lumba));
-  var weeks = (raceMonday.difference(monday).inHours / 168).round() + 1;
-  if (weeks > range[1]) {
-    monday = _add(raceMonday, -(range[1] - 1) * 7);
-    weeks = range[1];
-  }
-  return (mula: _add(monday, shift), weeks: weeks);
-}
 
 class PlanFormPage extends ConsumerStatefulWidget {
   const PlanFormPage({super.key, this.args = const PlanFormArgs()});
@@ -202,16 +184,13 @@ class _PlanFormPageState extends ConsumerState<PlanFormPage> {
       }
     }
     if (_race) {
+      // The API turns lumba (+ mula) into minggu and mula; the saved plan uses its returned params.
       final lumba = _lumba;
       if (lumba == null) {
         err ??= 'Pick the race date.';
       } else {
-        final now = DateTime.now();
-        final range = _is5k ? _raceWeeks5k : [_distanceWeeks[_kind]!.first, _distanceWeeks[_kind]!.last];
-        final r = racePlan(_mula ?? DateTime(now.year, now.month, now.day), lumba, range, _hari);
         p['lumba'] = _iso(lumba);
-        p['mula'] = _iso(r.mula);
-        p['minggu'] = '${r.weeks}';
+        if (_mula != null) p['mula'] = _iso(_mula!);
       }
     } else {
       if (_mula != null) p['mula'] = _iso(_mula!);
@@ -263,7 +242,7 @@ class _PlanFormPageState extends ConsumerState<PlanFormPage> {
         key: b.key,
         engine: b.engine,
         data: b.params,
-        progress: _existing == null ? const [] : (b.progress ?? const []),
+        progress: _existing == null ? const [] : (b.progress ?? _existing!.progress),
         replace: replace,
       );
       ref.invalidate(cloudPlansProvider);
@@ -430,7 +409,7 @@ class _PlanFormPageState extends ConsumerState<PlanFormPage> {
                 },
                 child: Text('Use $m months'),
               ),
-            if (f.suggestWeeks case final w?)
+            if (f.suggestWeeks case final w? when !(_race && _is5k))
               TextButton(
                 onPressed: () {
                   _changed(() {

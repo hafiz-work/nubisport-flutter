@@ -15,6 +15,8 @@ class FakeRepo implements PlanRepository {
   final List<CloudPlan> items;
   Object? buildError;
   Object? saveError;
+  bool noProgress = false;
+  Map<String, String> Function(Map<String, String>)? respond;
   final builds = <Map<String, String>>[];
   final saves = <({List<String> progress, String? replace, Map<String, String> data})>[];
   ({Map<String, String> params, List<String> progress})? lastPrevious;
@@ -47,9 +49,9 @@ class FakeRepo implements PlanRepository {
     return BuiltPlan(
       engine: 1,
       key: key ?? 'pelan-${kind.code}:x',
-      params: params,
+      params: respond?.call(params) ?? params,
       warnings: const ['careful'],
-      progress: previous == null ? null : ['remapped'],
+      progress: previous == null || noProgress ? null : ['remapped'],
       weeks: [
         PlanWeek(no: 1, phase: 'p', light: false, minutes: 60, sessions: [s('1.0'), s('1.1')]),
         PlanWeek(no: 2, phase: 'p', light: false, minutes: 60, sessions: [s('2.0')]),
@@ -207,10 +209,53 @@ void main() {
     expect(find.text('Pick the race date.'), findsOneWidget);
   });
 
-  test('racePlan counts weeks to the race week', () {
-    final r = racePlan(DateTime(2026, 11, 2), DateTime(2027, 1, 24), const [8, 24], 3);
-    expect(r.weeks, 12);
-    expect(r.mula, DateTime(2026, 11, 2));
+  Future<void> pickRace(WidgetTester t) async {
+    await tapText(t, '5K');
+    await t.enterText(find.byKey(const ValueKey('masa')), '33');
+    await t.ensureVisible(find.byKey(const ValueKey('Race date')));
+    await t.tap(find.byKey(const ValueKey('Race date')));
+    await t.pumpAndSettle();
+    await t.tap(find.byIcon(Icons.edit_outlined));
+    await t.pumpAndSettle();
+    await t.enterText(find.byType(TextField).last, '01/20/2027');
+    await t.tap(find.text('OK'));
+    await t.pumpAndSettle();
+  }
+
+  testWidgets('race date happy path sends lumba only and saves the built params', (t) async {
+    final repo = FakeRepo()..respond = (p) => {...p, 'mula': '2026-11-06', 'minggu': '11', 'bulan': '11w'};
+    await open(t, repo, const PlanFormArgs(raceDate: true));
+    await pickRace(t);
+    await tapText(t, 'Preview');
+    expect(repo.builds.single, {'tahap': 'jalan', 'hari': '3', 'masa': '33', 'lumba': '2027-01-20'});
+    await tapText(t, 'Save');
+    expect(repo.saves.single.data['minggu'], '11');
+    expect(repo.saves.single.data['mula'], '2026-11-06');
+    expect(repo.saves.single.data['bulan'], '11w');
+  });
+
+  testWidgets('5k race refusal offers no weeks suggestion', (t) async {
+    final repo = FakeRepo()..buildError = const PlanBuildFailure('Terlalu singkat', suggestWeeks: 12);
+    await open(t, repo, const PlanFormArgs(raceDate: true));
+    await pickRace(t);
+    await tapText(t, 'Preview');
+    expect(find.text('Terlalu singkat'), findsOneWidget);
+    expect(find.textContaining('Use 12 weeks'), findsNothing);
+  });
+
+  testWidgets('update keeps existing ticks when the API cannot remap', (t) async {
+    final repo = FakeRepo()..noProgress = true;
+    final existing = CloudPlan(
+      key: 'pelan-5k:3:5k:30:3',
+      engine: 1,
+      data: const {'tahap': '5k', 'bulan': '3', 'hari': '3', 'masa': '30'},
+      progress: const ['1.0', '2.1'],
+      updatedAt: DateTime(2026, 10, 1),
+    );
+    await open(t, repo, PlanFormArgs(kind: PlanKind.fiveK, existing: existing));
+    await tapText(t, 'Preview');
+    await tapText(t, 'Save');
+    expect(repo.saves.single.progress, ['1.0', '2.1']);
   });
 
   testWidgets('catalog cards open the form with mapped args', (t) async {
