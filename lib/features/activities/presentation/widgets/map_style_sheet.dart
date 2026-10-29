@@ -127,14 +127,6 @@ Future<void> showMapStyleSheet(BuildContext context) {
                     color: sheetTheme.colorScheme.onSurfaceVariant,
                   ),
                 ),
-                const SizedBox(height: 8),
-                // The map hides its own credit button (like Strava); OSM's ODbL still needs it shown somewhere.
-                Text(
-                  'Map © OpenFreeMap · data © OpenStreetMap contributors (ODbL).',
-                  style: sheetTheme.textTheme.bodySmall?.copyWith(
-                    color: sheetTheme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
               ],
             ),
           ),

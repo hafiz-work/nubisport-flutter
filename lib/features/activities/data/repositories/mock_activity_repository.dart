@@ -2214,7 +2214,8 @@ class MockActivityRepository implements ActivityRepository {
       elevationGainM: 42,
       calories: 310,
       kudos: 12,
-      notes: 'Legs felt light today. Keep the pace easy and focus on breathing.',
+      notes:
+          'Legs felt light today. Keep the pace easy and focus on breathing.',
       splits: const [
         Duration(minutes: 5, seconds: 12),
         Duration(minutes: 5, seconds: 38),
@@ -2267,7 +2268,8 @@ class MockActivityRepository implements ActivityRepository {
       elevationGainM: 210,
       calories: 980,
       kudos: 21,
-      notes: 'First long run for the 21K block. Save energy for the second half.',
+      notes:
+          'First long run for the 21K block. Save energy for the second half.',
       splits: const [
         Duration(minutes: 6, seconds: 10),
         Duration(minutes: 6, seconds: 14),
@@ -2369,7 +2371,6 @@ class MockActivityRepository implements ActivityRepository {
     ),
   ];
 
-
   @override
   Future<List<Activity>> myActivities({required int userId}) async {
     await _wait();
@@ -2386,7 +2387,10 @@ class MockActivityRepository implements ActivityRepository {
   final Set<String> _kudosed = {};
 
   @override
-  Future<({int count, bool mine})> setKudos(String id, {required bool on}) async {
+  Future<({int count, bool mine})> setKudos(
+    String id, {
+    required bool on,
+  }) async {
     await _wait();
     final base = _activities.firstWhere((activity) => activity.id == id).kudos;
     on ? _kudosed.add(id) : _kudosed.remove(id);
@@ -2403,7 +2407,8 @@ class MockActivityRepository implements ActivityRepository {
   }
 
   List<Activity> _sorted(Iterable<Activity> items) {
-    final list = items.toList()..sort((a, b) => b.startedAt.compareTo(a.startedAt));
+    final list = items.toList()
+      ..sort((a, b) => b.startedAt.compareTo(a.startedAt));
     return list;
   }
 

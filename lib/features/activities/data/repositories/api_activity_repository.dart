@@ -1,15 +1,19 @@
+import 'dart:async';
+import 'dart:isolate';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 
 import '../../../auth/domain/models/app_user.dart';
 import '../../domain/models/activity.dart';
 import '../../domain/repositories/activity_repository.dart';
+import '../fit_records.dart';
 
 /// hono-workers /me/apps/nubi/activities (own) and /me/apps/nubi/feed (members' shared runs).
 ///
 /// The API has no place name, calories or notes. Route, splits and chart streams come from the
-/// owner's shared records (/feed/:id/records); private activities only have the summary.
+/// owner's shared records (/feed/:id/records), or for own activities from the original .fit.
 class ApiActivityRepository implements ActivityRepository {
   ApiActivityRepository(this._dio, {required this.currentUser});
   final Dio _dio;
@@ -49,14 +53,43 @@ class ApiActivityRepository implements ActivityRepository {
     if (int.tryParse(id) == null) return null;
     final shared = await _getOrNull('/me/apps/nubi/feed/$id');
     if (shared != null) {
-      return feedFromJson(
-        shared,
-        currentUser(),
-        records: await _recordsOrNull('/me/apps/nubi/feed/$id/records'),
+      Map<String, dynamic>? records = await _recordsOrNull(
+        '/me/apps/nubi/feed/$id/records',
       );
+      // Shared before the members' copy existed (or from another client): read our own .fit and
+      // send the copy, like the web's detail page does, so members get the charts too.
+      if (records == null && shared['own'] == true) {
+        records = await _fitRecordsOrNull(id);
+        if (records != null && (records['timestamp'] as List).length <= 50000) {
+          unawaited(
+            _dio
+                .put<void>('/me/apps/nubi/activities/$id/shared', data: records)
+                .then((_) {}, onError: (_) {}),
+          );
+        }
+      }
+      return feedFromJson(shared, currentUser(), records: records);
     }
     final own = await _getOrNull('/me/apps/nubi/activities/$id');
-    return own == null ? null : ownFromJson(own, currentUser());
+    return own == null
+        ? null
+        : ownFromJson(own, currentUser(), records: await _fitRecordsOrNull(id));
+  }
+
+  /// Own original .fit decoded to record columns; null when missing or unreadable - the
+  /// summary still shows, only the charts are left out.
+  Future<Map<String, dynamic>?> _fitRecordsOrNull(String id) async {
+    try {
+      final res = await _dio.get<List<int>>(
+        '/me/apps/nubi/activities/$id/file',
+        options: Options(responseType: ResponseType.bytes),
+      );
+      final bytes = Uint8List.fromList(res.data ?? const []);
+      // Off the UI isolate: a long activity is tens of thousands of records.
+      return await Isolate.run(() => fitRecordColumns(bytes));
+    } on DioException {
+      return null;
+    }
   }
 
   @override
@@ -99,13 +132,22 @@ class ApiActivityRepository implements ActivityRepository {
   }
 }
 
-Activity ownFromJson(Map<String, dynamic> json, AppUser? me) => _activity(
-  json,
-  userId: me?.id ?? 0,
-  userName: me?.name ?? '',
-  route: const [],
-  kudos: 0,
-);
+Activity ownFromJson(
+  Map<String, dynamic> json,
+  AppUser? me, {
+  Map<String, dynamic>? records,
+}) {
+  final track = records == null ? null : parseRecords(records);
+  return _activity(
+    json,
+    userId: me?.id ?? 0,
+    userName: me?.name ?? '',
+    route: track?.route ?? const [],
+    kudos: 0,
+    splits: track?.splits ?? const [],
+    samples: track?.samples ?? const [],
+  );
+}
 
 Activity feedFromJson(
   Map<String, dynamic> json,

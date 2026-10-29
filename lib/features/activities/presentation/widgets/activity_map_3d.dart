@@ -8,6 +8,8 @@ import 'package:maplibre_gl/maplibre_gl.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../domain/models/activity.dart';
+import 'activity_map.dart' show MapCreditButton;
+import 'route_draw.dart';
 
 /// Native MapLibre map for the activity detail page: angled 3D camera, the
 /// Liberty style's 3D buildings, and a GeoJSON route that draws itself.
@@ -62,9 +64,39 @@ class _ActivityMap3DState extends State<ActivityMap3D>
   MapLibreMapController? _map;
   bool _styleReady = false;
   bool _drawing = false;
+  int _arrowsShown = -1;
 
-  List<LatLng> get _route => [
+  /// Built once: per-frame work must not grow with the route's length.
+  late final List<LatLng> _route = [
     for (final p in widget.activity.route) LatLng(p.latitude, p.longitude),
+  ];
+
+  /// Mercator distance from the start to each point, matching MapLibre's line-progress, so
+  /// the moving tip sits exactly at the end of the drawn line.
+  late final List<double> _cumulative = () {
+    var total = 0.0;
+    final out = <double>[];
+    for (var i = 0; i < _route.length; i++) {
+      if (i > 0) {
+        final a = mercator(_route[i - 1].latitude, _route[i - 1].longitude);
+        final b = mercator(_route[i].latitude, _route[i].longitude);
+        total += math.sqrt(
+          (b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y),
+        );
+      }
+      out.add(total);
+    }
+    return out;
+  }();
+
+  late final List<({LatLng point, double bearing, double at})> _arrows = [
+    for (var i = 1; i <= _arrowCount; i++)
+      if ((
+            _pointAt(i / (_arrowCount + 1)),
+            _pointAt(i / (_arrowCount + 1) + 0.01),
+          )
+          case (final a, final b) when a != b)
+        (point: a, bearing: _bearing(a, b), at: i / (_arrowCount + 1)),
   ];
   bool get _hasRoute => _route.length > 1;
   bool get _animate => widget.animateRoute && _hasRoute;
@@ -77,8 +109,8 @@ class _ActivityMap3DState extends State<ActivityMap3D>
     super.initState();
     _routeController = AnimationController(
       vsync: this,
-      // Same pace and easing as the 2D map (activity_map.dart).
-      duration: const Duration(milliseconds: 4500),
+      // Same on-screen speed for every route, and the same as the 2D map.
+      duration: routeDrawDuration(widget.activity.route),
       value: _animate ? 0 : 1,
     )..addListener(_onRouteTick);
   }
@@ -131,12 +163,17 @@ class _ActivityMap3DState extends State<ActivityMap3D>
     final start = _route.isNotEmpty ? _route.first : _center;
     final end = _route.length > 1 ? _route.last : _center;
 
-    await map.addGeoJsonSource(_routeSource, _lineJson(const []));
+    // The whole line goes to the map once; drawing only moves a gradient cut-off along it, so
+    // each frame costs the same however long the route is.
+    await map.addSource(
+      _routeSource,
+      GeojsonSourceProperties(data: _lineJson(_route), lineMetrics: true),
+    );
     await map.addLineLayer(
       _routeSource,
       _routeCasingLayer,
-      const LineLayerProperties(
-        lineColor: '#FFFFFF',
+      LineLayerProperties(
+        lineGradient: _reveal('#FFFFFF', _progress),
         lineWidth: 8.5,
         lineJoin: 'round',
         lineCap: 'round',
@@ -146,7 +183,7 @@ class _ActivityMap3DState extends State<ActivityMap3D>
       _routeSource,
       _routeLayer,
       LineLayerProperties(
-        lineColor: _hex(AppColors.orange),
+        lineGradient: _reveal(_hex(AppColors.orange), _progress),
         lineWidth: 5.5,
         lineJoin: 'round',
         lineCap: 'round',
@@ -215,24 +252,70 @@ class _ActivityMap3DState extends State<ActivityMap3D>
     }
   }
 
+  /// [color] up to [t] of the line, transparent after it.
+  static List<Object> _reveal(String color, double t) => [
+    'step',
+    ['line-progress'],
+    color,
+    t >= 1 ? 1.01 : t,
+    'rgba(0,0,0,0)',
+  ];
+
   Future<void> _drawRoute(double t) async {
     final map = _map;
     if (map == null || !_styleReady) return;
-    final partial = _partialRoute(t);
-    final tip = partial.tip ?? _center;
     try {
-      await map.setGeoJsonSource(_routeSource, _lineJson(partial.points));
-      await map.setGeoJsonSource(_tipSource, _pointJson(tip));
-      await map.setGeoJsonSource(
-        _arrowSource,
-        _arrowJson([
-          for (final a in _arrows)
-            if (a.at <= t) a,
-        ]),
+      await map.setLayerProperties(
+        _routeCasingLayer,
+        LineLayerProperties(lineGradient: _reveal('#FFFFFF', t)),
       );
+      await map.setLayerProperties(
+        _routeLayer,
+        LineLayerProperties(lineGradient: _reveal(_hex(AppColors.orange), t)),
+      );
+      await map.setGeoJsonSource(
+        _tipSource,
+        _pointJson(_hasRoute ? _pointAt(t) : _center),
+      );
+      // Arrows only change when the line passes one.
+      final shown = _arrows.where((a) => a.at <= t).length;
+      if (shown != _arrowsShown) {
+        _arrowsShown = shown;
+        await map.setGeoJsonSource(
+          _arrowSource,
+          _arrowJson(_arrows.take(shown).toList()),
+        );
+      }
     } catch (_) {
       // Style not ready yet, or the map is being disposed.
     }
+  }
+
+  /// The point [t] (0..1) of the way along the route, by binary search.
+  LatLng _pointAt(double t) {
+    final route = _route;
+    if (route.length < 2 || t <= 0) {
+      return route.isEmpty ? _center : route.first;
+    }
+    final total = _cumulative.last;
+    if (t >= 1 || total <= 0) return route.last;
+    final target = total * t;
+    var lo = 1, hi = route.length - 1;
+    while (lo < hi) {
+      final mid = (lo + hi) >> 1;
+      if (_cumulative[mid] < target) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    final span = _cumulative[lo] - _cumulative[lo - 1];
+    final f = span == 0 ? 0.0 : (target - _cumulative[lo - 1]) / span;
+    final a = route[lo - 1], b = route[lo];
+    return LatLng(
+      a.latitude + (b.latitude - a.latitude) * f,
+      a.longitude + (b.longitude - a.longitude) * f,
+    );
   }
 
   /// One camera move that frames the route inside [padding] with the tilt already applied.
@@ -252,7 +335,7 @@ class _ActivityMap3DState extends State<ActivityMap3D>
     try {
       await map.animateCamera(
         CameraUpdate.newCameraPosition(camera),
-        duration: Duration(milliseconds: initial ? 1800 : 700),
+        duration: Duration(milliseconds: initial ? 1800 : 850),
       );
     } catch (_) {}
   }
@@ -283,53 +366,6 @@ class _ActivityMap3DState extends State<ActivityMap3D>
     _introTimer?.cancel();
     unawaited(_fitRoute());
     _routeController.forward(from: 0);
-  }
-
-  ({List<LatLng> points, LatLng? tip}) _partialRoute(double t) {
-    final route = _route;
-    if (route.isEmpty) return (points: const <LatLng>[], tip: null);
-    if (route.length == 1 || t >= 1) return (points: route, tip: route.last);
-    if (t <= 0) return (points: [route.first], tip: route.first);
-
-    final lengths = <double>[];
-    var total = 0.0;
-    for (var i = 1; i < route.length; i++) {
-      final length = _meters(route[i - 1], route[i]);
-      lengths.add(length);
-      total += length;
-    }
-    if (total <= 0) return (points: route, tip: route.last);
-
-    final target = total * t;
-    final points = <LatLng>[route.first];
-    var covered = 0.0;
-    for (var i = 0; i < lengths.length; i++) {
-      final length = lengths[i];
-      if (covered + length <= target) {
-        points.add(route[i + 1]);
-        covered += length;
-        continue;
-      }
-      final fraction = length == 0 ? 0.0 : (target - covered) / length;
-      final a = route[i];
-      final b = route[i + 1];
-      points.add(
-        LatLng(
-          a.latitude + (b.latitude - a.latitude) * fraction,
-          a.longitude + (b.longitude - a.longitude) * fraction,
-        ),
-      );
-      break;
-    }
-    return (points: points, tip: points.last);
-  }
-
-  static double _meters(LatLng a, LatLng b) {
-    const earth = 6371000.0;
-    final dLat = (b.latitude - a.latitude) * math.pi / 180;
-    final dLng = (b.longitude - a.longitude) * math.pi / 180;
-    final x = dLng * math.cos((a.latitude + b.latitude) / 2 * math.pi / 180);
-    return earth * math.sqrt(dLat * dLat + x * x);
   }
 
   static LatLng _midpoint(LatLngBounds b) => LatLng(
@@ -371,17 +407,6 @@ class _ActivityMap3DState extends State<ActivityMap3D>
             },
           ],
   };
-
-  /// Evenly spaced points along the route with their heading, for direction arrows.
-  List<({LatLng point, double bearing, double at})> get _arrows => [
-    for (var i = 1; i <= _arrowCount; i++)
-      if ((
-            _partialRoute(i / (_arrowCount + 1)).tip,
-            _partialRoute(i / (_arrowCount + 1) + 0.01).tip,
-          )
-          case (final a?, final b?) when a != b)
-        (point: a, bearing: _bearing(a, b), at: i / (_arrowCount + 1)),
-  ];
 
   static double _bearing(LatLng a, LatLng b) {
     final lat1 = a.latitude * math.pi / 180;
@@ -479,36 +504,33 @@ class _ActivityMap3DState extends State<ActivityMap3D>
               doubleClickZoomEnabled: true,
               compassEnabled: false,
               logoEnabled: false,
-              // Hidden like Strava's; the OSM/OpenFreeMap credit lives in the map style sheet.
+              // The native credit sits under the sheet; MapCreditButton below shows it above the sheet.
               attributionButtonPosition: AttributionButtonPosition.bottomLeft,
               attributionButtonMargins: const math.Point(-200, -200),
               foregroundLoadColor: theme.colorScheme.surfaceContainerHigh,
             ),
           ),
+          MapCreditButton(bottomInset: widget.controlsBottomInset),
           if (_animate)
-            // Small replay at bottom-left, riding just above the sheet like Strava's.
             Positioned(
-              left: 12,
+              right: 12,
               bottom: widget.controlsBottomInset,
               child: Tooltip(
                 message: 'Replay animation',
                 child: Material(
-                  color: Colors.black.withValues(alpha: 0.55),
-                  shape: CircleBorder(
-                    side: BorderSide(
-                      color: Colors.white.withValues(alpha: 0.35),
-                    ),
-                  ),
+                  color: theme.colorScheme.surface.withValues(alpha: 0.94),
+                  shape: const CircleBorder(),
+                  elevation: 3,
                   child: InkWell(
                     customBorder: const CircleBorder(),
                     onTap: _replay,
-                    child: const SizedBox(
-                      width: 36,
-                      height: 36,
+                    child: SizedBox(
+                      width: 48,
+                      height: 48,
                       child: Icon(
-                        Icons.play_arrow_outlined,
-                        size: 22,
-                        color: Colors.white,
+                        Icons.play_arrow_rounded,
+                        size: 28,
+                        color: theme.colorScheme.primary,
                       ),
                     ),
                   ),

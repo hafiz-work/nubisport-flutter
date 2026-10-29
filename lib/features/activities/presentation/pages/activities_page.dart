@@ -25,7 +25,8 @@ class ActivitiesPage extends ConsumerWidget {
           await ref.read(myActivitiesProvider.future);
         },
         child: activities.when(
-          loading: () => const Center(child: CircularProgressIndicator.adaptive()),
+          loading: () =>
+              const Center(child: CircularProgressIndicator.adaptive()),
           error: (_, _) => ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 140),
@@ -51,7 +52,10 @@ class ActivitiesPage extends ConsumerWidget {
                 for (final activity in items)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),
-                    child: ActivityCard(activity: activity, onTap: () => _open(context, activity.id)),
+                    child: ActivityCard(
+                      activity: activity,
+                      onTap: () => _open(context, activity.id),
+                    ),
                   ),
             ],
           ),

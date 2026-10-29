@@ -36,10 +36,18 @@ class AuthInterceptor extends QueuedInterceptor {
   final Dio retryClient;
   final void Function()? onSessionExpired;
 
-  static const _noAuth = {'/auth/login', '/auth/register', '/auth/forgot-password', '/auth/refresh'};
+  static const _noAuth = {
+    '/auth/login',
+    '/auth/register',
+    '/auth/forgot-password',
+    '/auth/refresh',
+  };
 
   @override
-  Future<void> onRequest(RequestOptions options, RequestInterceptorHandler handler) async {
+  Future<void> onRequest(
+    RequestOptions options,
+    RequestInterceptorHandler handler,
+  ) async {
     if (!_noAuth.contains(options.path)) {
       final tokens = await storage.read();
       if (tokens != null) {
@@ -50,19 +58,32 @@ class AuthInterceptor extends QueuedInterceptor {
   }
 
   @override
-  Future<void> onError(DioException err, ErrorInterceptorHandler handler) async {
+  Future<void> onError(
+    DioException err,
+    ErrorInterceptorHandler handler,
+  ) async {
     final request = err.requestOptions;
-    if (err.response?.statusCode != 401 || _noAuth.contains(request.path) || request.extra['retried'] == true) {
+    if (err.response?.statusCode != 401 ||
+        _noAuth.contains(request.path) ||
+        request.extra['retried'] == true) {
       return handler.next(err);
     }
     final stored = await storage.read();
     if (stored == null) return handler.next(err);
 
     // Another queued request already refreshed: just replay with the new token.
-    final usedToken = (request.headers['Authorization'] as String?)?.replaceFirst('Bearer ', '');
+    final usedToken = (request.headers['Authorization'] as String?)
+        ?.replaceFirst('Bearer ', '');
     var tokens = stored;
     if (usedToken == stored.accessToken) {
-      final refreshed = await _refresh(stored.refreshToken);
+      final AuthTokens? refreshed;
+      try {
+        refreshed = await _refresh(stored.refreshToken);
+      } on DioException catch (e) {
+        // Offline, timeout or server error: the session may still be fine, so keep the tokens
+        // and fail only this request.
+        return handler.next(e);
+      }
       if (refreshed == null) {
         await storage.clear();
         onSessionExpired?.call();
@@ -81,18 +102,25 @@ class AuthInterceptor extends QueuedInterceptor {
     }
   }
 
+  /// null = the refresh token is dead (401). Any other failure throws, so the caller keeps the session.
   Future<AuthTokens?> _refresh(String refreshToken) async {
     try {
-      final res = await refreshClient.post<Object?>('/auth/refresh', data: {'refreshToken': refreshToken});
+      final res = await refreshClient.post<Object?>(
+        '/auth/refresh',
+        data: {'refreshToken': refreshToken},
+      );
       return tokensFromSetCookie(res.headers);
-    } on DioException {
-      return null;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 401) return null;
+      rethrow;
     }
   }
 }
 
 /// Called when the refresh token is dead - the auth controller listens and shows login.
-final sessionExpiredProvider = NotifierProvider<SessionExpired, int>(SessionExpired.new);
+final sessionExpiredProvider = NotifierProvider<SessionExpired, int>(
+  SessionExpired.new,
+);
 
 class SessionExpired extends Notifier<int> {
   @override

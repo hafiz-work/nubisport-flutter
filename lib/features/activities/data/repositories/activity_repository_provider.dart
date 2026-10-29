@@ -9,5 +9,8 @@ import 'mock_activity_repository.dart';
 
 final activityRepositoryProvider = Provider<ActivityRepository>((ref) {
   if (ref.watch(appConfigProvider).isMock) return MockActivityRepository();
-  return ApiActivityRepository(ref.watch(dioProvider), currentUser: () => ref.read(authControllerProvider).value);
+  return ApiActivityRepository(
+    ref.watch(dioProvider),
+    currentUser: () => ref.read(authControllerProvider).value,
+  );
 });

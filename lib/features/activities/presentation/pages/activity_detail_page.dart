@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -16,6 +17,7 @@ import '../widgets/activity_map.dart';
 import '../widgets/activity_map_3d.dart';
 import '../widgets/activity_share_sheet.dart';
 import '../widgets/activity_stream_chart.dart';
+import '../widgets/kudos_bar.dart';
 import '../widgets/map_style_sheet.dart';
 
 class ActivityDetailPage extends ConsumerWidget {
@@ -97,10 +99,15 @@ class _ActivityDetailState extends ConsumerState<_ActivityDetail> {
   List<double> _snapSizes = const [_minSheet, _initialSheet, 0.86];
   final _fullNotifier = ValueNotifier(false);
   double _bodyHeight = 0;
-  bool _wasMinimized = false;
-  int _focusTrigger = 0;
   bool _show3d = true;
-  EdgeInsets _focusPadding = const EdgeInsets.all(48);
+
+  /// Camera refits: bump trigger + where to fit. Only the map listens, so a refit never
+  /// rebuilds the sheet or charts while the camera moves.
+  final _focus = ValueNotifier((trigger: 0, padding: EdgeInsets.zero));
+
+  /// Snap size the camera was last fitted for, and the debounce that waits for the sheet to rest.
+  double _settledAt = _initialSheet;
+  Timer? _settleTimer;
   late var _kudos = (
     count: widget.activity.kudos,
     mine: widget.activity.kudosed,
@@ -140,41 +147,48 @@ class _ActivityDetailState extends ConsumerState<_ActivityDetail> {
     final size = _sheetController.size;
     _sheetSize.value = size;
     _fullNotifier.value = _isFull(size);
-    final minimized = size <= _minSheet + 0.03;
-    if (minimized == _wasMinimized) return;
-    final height = _bodyHeight > 0
-        ? _bodyHeight
-        : MediaQuery.sizeOf(context).height;
-    setState(() {
-      if (minimized) {
-        _wasMinimized = true;
-        _focusPadding = EdgeInsets.fromLTRB(
-          48,
-          110,
-          48,
-          height * _minSheet + 24,
-        );
-        _focusTrigger++;
-      } else {
-        // Maximized/restored again: ease back to the wider view.
-        _wasMinimized = false;
-        _focusPadding = EdgeInsets.fromLTRB(
-          48,
-          110,
-          48,
-          height * _initialSheet + 24,
-        );
-        _focusTrigger++;
-      }
+    // Refit once the sheet comes to rest on a snap it wasn't on before (minimize, open,
+    // back from full) - not on every drag frame, so the camera makes one smooth move.
+    _settleTimer?.cancel();
+    _settleTimer = Timer(const Duration(milliseconds: 120), () {
+      if (!mounted || !_sheetController.isAttached) return;
+      final snap = _snapSizes
+          .where((s) => (s - _sheetController.size).abs() < 0.01)
+          .firstOrNull;
+      if (snap == null || snap == _settledAt) return;
+      _settledAt = snap;
+      // At full height the sheet covers the map: nothing to fit.
+      if (!_isFull(snap)) _refit(snap);
     });
   }
 
+  /// The route fits between the top bar and the sheet, clear of the map buttons on the right.
+  EdgeInsets _fitPadding(double sheet) {
+    final height = _bodyHeight > 0
+        ? _bodyHeight
+        : MediaQuery.sizeOf(context).height;
+    return EdgeInsets.fromLTRB(
+      40,
+      MediaQuery.paddingOf(context).top + _topBarHeight + 16,
+      72,
+      // Capped so a tall sheet still leaves room to fit the route.
+      math.min(height * sheet, height * 0.58) + 24,
+    );
+  }
+
+  void _refit(double sheet) => _focus.value = (
+    trigger: _focus.value.trigger + 1,
+    padding: _fitPadding(sheet),
+  );
+
   @override
   void dispose() {
+    _settleTimer?.cancel();
     _sheetController.removeListener(_onSheetChanged);
     _sheetController.dispose();
     _sheetSize.dispose();
     _fullNotifier.dispose();
+    _focus.dispose();
     super.dispose();
   }
 
@@ -213,12 +227,7 @@ class _ActivityDetailState extends ConsumerState<_ActivityDetail> {
             final can3d =
                 theme.platform == TargetPlatform.android ||
                 theme.platform == TargetPlatform.iOS;
-            final initialFocusPadding = EdgeInsets.fromLTRB(
-              48,
-              110,
-              48,
-              height * _initialSheet + 24,
-            );
+            final initialFocusPadding = _fitPadding(_initialSheet);
             // Built once per real rebuild, reused by every drag frame of the sheet.
             final sheetContent = ListView(
               primary: true,
@@ -252,9 +261,11 @@ class _ActivityDetailState extends ConsumerState<_ActivityDetail> {
                 Positioned.fill(
                   child: activity.route.isEmpty
                       ? ColoredBox(color: theme.colorScheme.surfaceContainer)
-                      : ValueListenableBuilder<double>(
-                          valueListenable: _sheetSize,
-                          builder: (context, size, _) {
+                      : ListenableBuilder(
+                          listenable: Listenable.merge([_sheetSize, _focus]),
+                          builder: (context, _) {
+                            final size = _sheetSize.value;
+                            final focus = _focus.value;
                             // Keep the map's "i"/play just above the sheet while it moves, but
                             // stop following once the sheet is high enough to cover them.
                             final controlsBottom = math.min(
@@ -268,8 +279,8 @@ class _ActivityDetailState extends ConsumerState<_ActivityDetail> {
                                     animateRoute: true,
                                     controlsBottomInset: controlsBottom,
                                     initialFocusPadding: initialFocusPadding,
-                                    focusTrigger: _focusTrigger,
-                                    focusPadding: _focusPadding,
+                                    focusTrigger: focus.trigger,
+                                    focusPadding: focus.padding,
                                     tilted: _show3d,
                                   )
                                 // Desktop/web fall back to the pure-Flutter vector map.
@@ -282,12 +293,54 @@ class _ActivityDetailState extends ConsumerState<_ActivityDetail> {
                                     controlsBottomInset: controlsBottom,
                                     useVector: true,
                                     initialFocusPadding: initialFocusPadding,
-                                    focusTrigger: _focusTrigger,
-                                    focusPadding: _focusPadding,
+                                    focusTrigger: focus.trigger,
+                                    focusPadding: focus.padding,
                                   );
                           },
                         ),
                 ),
+                // Map controls stacked above the replay button, moving with the sheet like it;
+                // capped under the top bar on short screens. The sheet covers them when it rises.
+                if (activity.route.isNotEmpty)
+                  ValueListenableBuilder<double>(
+                    valueListenable: _sheetSize,
+                    builder: (context, size, column) {
+                      final columnHeight = (can3d ? 3 : 2) * 50.0;
+                      final bottom = math.min(
+                        math.min(height * (size + 0.02), height * 0.58) + 56,
+                        height - topInset - _topBarHeight - columnHeight,
+                      );
+                      return Positioned(
+                        right: 12,
+                        bottom: bottom,
+                        child: column!,
+                      );
+                    },
+                    child: Column(
+                      children: [
+                        _MapButton(
+                          icon: Icons.layers_outlined,
+                          tooltip: 'Map style',
+                          onTap: () => showMapStyleSheet(context),
+                        ),
+                        if (can3d)
+                          _MapButton(
+                            // Shows the mode a tap switches to, like Strava's 2D/3D toggle.
+                            label: _show3d ? '2D' : '3D',
+                            tooltip: _show3d
+                                ? 'Switch to 2D map'
+                                : 'Switch to 3D map',
+                            onTap: () => setState(() => _show3d = !_show3d),
+                          ),
+                        _MapButton(
+                          icon: Icons.my_location,
+                          tooltip: 'Refocus route',
+                          // Re-fit the whole route above the sheet at its current size.
+                          onTap: () => _refit(_sheetSize.value),
+                        ),
+                      ],
+                    ),
+                  ),
                 DraggableScrollableSheet(
                   controller: _sheetController,
                   initialChildSize: _initialSheet,
@@ -331,50 +384,15 @@ class _ActivityDetailState extends ConsumerState<_ActivityDetail> {
                       onBack: full
                           ? _collapseSheet
                           : () => Navigator.of(context).pop(),
-                      actions: [
-                        _MapButton(
-                          icon: Icons.share_outlined,
-                          tooltip: 'Share activity',
-                          onTap: () => showActivityShareSheet(
-                            context,
-                            activity,
-                            isMine: widget.isMine,
-                          ),
+                      trailing: _MapButton(
+                        icon: Icons.share_outlined,
+                        tooltip: 'Share activity',
+                        onTap: () => showActivityShareSheet(
+                          context,
+                          activity,
+                          isMine: widget.isMine,
                         ),
-                        _MapButton(
-                          icon: Icons.layers_outlined,
-                          tooltip: 'Map style',
-                          onTap: () => showMapStyleSheet(context),
-                        ),
-                        if (can3d)
-                          _MapButton(
-                            // Shows the mode a tap switches to, like Strava's 2D/3D toggle.
-                            label: _show3d ? '2D' : '3D',
-                            tooltip: _show3d
-                                ? 'Switch to 2D map'
-                                : 'Switch to 3D map',
-                            onTap: () => setState(() => _show3d = !_show3d),
-                          ),
-                        _MapButton(
-                          icon: Icons.my_location,
-                          tooltip: 'Refocus route',
-                          // Re-fit the whole route above the sheet at its current size.
-                          onTap: () => setState(() {
-                            // Capped so a fully opened sheet still leaves room to fit the route.
-                            _focusPadding = EdgeInsets.fromLTRB(
-                              48,
-                              110,
-                              48,
-                              math.min(
-                                    height * _sheetSize.value,
-                                    height * 0.58,
-                                  ) +
-                                  24,
-                            );
-                            _focusTrigger++;
-                          }),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
@@ -432,12 +450,22 @@ class _ActivityDetailState extends ConsumerState<_ActivityDetail> {
           padding: const EdgeInsets.only(top: 20),
           child: _NotesCard(notes: activity.notes),
         ),
-      _KudosBar(
-        count: _kudos.count,
-        mine: _kudos.mine,
-        // The API allows no kudos on your own activity.
-        onKudos: mine ? null : _toggleKudos,
-        onShare: () => showActivityShareSheet(context, activity, isMine: mine),
+      Padding(
+        padding: const EdgeInsets.only(top: 22),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            KudosBar(
+              count: _kudos.count,
+              mine: _kudos.mine,
+              // The API allows no kudos on your own activity.
+              onKudos: mine ? null : _toggleKudos,
+              onShare: () =>
+                  showActivityShareSheet(context, activity, isMine: mine),
+            ),
+            const Divider(height: 24),
+          ],
+        ),
       ),
       if (hasAltitude)
         _ChartSection(
@@ -606,78 +634,6 @@ class _WeatherRow extends StatelessWidget {
   ][((deg % 360) / 45).round() % 8];
 }
 
-/// "Be the first to give kudos!" + kudos/share actions under the summary.
-class _KudosBar extends StatelessWidget {
-  const _KudosBar({
-    required this.count,
-    required this.mine,
-    required this.onKudos,
-    required this.onShare,
-  });
-  final int count;
-  final bool mine;
-  final VoidCallback? onKudos;
-  final VoidCallback onShare;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final text = count == 0
-        ? (onKudos == null ? 'No kudos yet' : 'Be the first to give kudos!')
-        : '$count ${count == 1 ? 'kudo' : 'kudos'}';
-    return Padding(
-      padding: const EdgeInsets.only(top: 22),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 200),
-            child: Text(
-              text,
-              key: ValueKey(text),
-              style: theme.textTheme.bodySmall,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              IconButton(
-                tooltip: mine ? 'Take back kudos' : 'Give kudos',
-                onPressed: onKudos,
-                icon: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 260),
-                  transitionBuilder: (child, animation) => ScaleTransition(
-                    scale: CurvedAnimation(
-                      parent: animation,
-                      curve: Curves.elasticOut,
-                    ),
-                    child: child,
-                  ),
-                  child: Icon(
-                    mine ? Icons.thumb_up : Icons.thumb_up_outlined,
-                    key: ValueKey(mine),
-                    color: mine
-                        ? AppColors.orange
-                        : (onKudos == null ? scheme.outline : scheme.onSurface),
-                  ),
-                ),
-              ),
-              IconButton(
-                tooltip: 'Share activity',
-                onPressed: onShare,
-                icon: const Icon(Icons.ios_share),
-              ),
-            ],
-          ),
-          const Divider(height: 24),
-        ],
-      ),
-    );
-  }
-}
-
 /// Title, optional chart, then label/value rows - one Strava detail block.
 class _ChartSection extends StatelessWidget {
   const _ChartSection({required this.title, this.chart, required this.rows});
@@ -720,7 +676,7 @@ class _ChartSection extends StatelessWidget {
   }
 }
 
-/// Back button + map actions over the map; at full sheet height it becomes Strava's bar:
+/// Back button + share over the map; at full sheet height it becomes Strava's bar:
 /// solid background, title, and the back arrow turns down into "close sheet".
 class _TopBar extends StatelessWidget {
   const _TopBar({
@@ -728,13 +684,13 @@ class _TopBar extends StatelessWidget {
     required this.title,
     required this.height,
     required this.onBack,
-    required this.actions,
+    required this.trailing,
   });
   final bool full;
   final String title;
   final double height;
   final VoidCallback onBack;
-  final List<Widget> actions;
+  final Widget trailing;
 
   static const _duration = Duration(milliseconds: 280);
 
@@ -789,20 +745,7 @@ class _TopBar extends StatelessWidget {
                   ),
                 ),
                 const Spacer(),
-                // Map actions have nothing to act on while the sheet covers the map.
-                IgnorePointer(
-                  ignoring: full,
-                  child: AnimatedOpacity(
-                    duration: _duration,
-                    opacity: full ? 0 : 1,
-                    child: AnimatedSlide(
-                      duration: _duration,
-                      curve: Curves.easeOut,
-                      offset: full ? const Offset(0.4, 0) : Offset.zero,
-                      child: Column(children: actions),
-                    ),
-                  ),
-                ),
+                trailing,
               ],
             ),
           ),
@@ -927,7 +870,7 @@ class _AuthorRow extends StatelessWidget {
                   const SizedBox(width: 4),
                   Flexible(
                     child: Text(
-                      formatActivityDate(activity.startedAt),
+                      formatRelativeDate(activity.startedAt),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodySmall?.copyWith(

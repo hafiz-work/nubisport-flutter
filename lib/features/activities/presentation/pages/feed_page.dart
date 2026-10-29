@@ -30,16 +30,23 @@ class _FeedPageState extends ConsumerState<FeedPage> {
   Future<void> _toggleKudos(Activity activity) async {
     final before = _kudosOf(activity);
     final on = !before.mine;
-    setState(() => _kudos[activity.id] = (count: before.count + (on ? 1 : -1), mine: on));
+    setState(
+      () =>
+          _kudos[activity.id] = (count: before.count + (on ? 1 : -1), mine: on),
+    );
     try {
-      final after = await ref.read(activityRepositoryProvider).setKudos(activity.id, on: on);
+      final after = await ref
+          .read(activityRepositoryProvider)
+          .setKudos(activity.id, on: on);
       if (mounted) setState(() => _kudos[activity.id] = after);
     } catch (_) {
       if (!mounted) return;
       setState(() => _kudos[activity.id] = before);
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text('Couldn\'t send kudos. Try again.')));
+        ..showSnackBar(
+          const SnackBar(content: Text('Couldn\'t send kudos. Try again.')),
+        );
     }
   }
 
@@ -52,6 +59,8 @@ class _FeedPageState extends ConsumerState<FeedPage> {
     final feed = ref.watch(activityFeedProvider);
     final myId = ref.watch(authControllerProvider).value?.id;
     return Scaffold(
+      // Cards are surface-coloured; this shows between them as Strava's gap.
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
       appBar: AppBar(title: const Text('Feed')),
       body: RefreshIndicator.adaptive(
         onRefresh: () async {
@@ -59,7 +68,8 @@ class _FeedPageState extends ConsumerState<FeedPage> {
           await ref.read(activityFeedProvider.future);
         },
         child: feed.when(
-          loading: () => const Center(child: CircularProgressIndicator.adaptive()),
+          loading: () =>
+              const Center(child: CircularProgressIndicator.adaptive()),
           error: (_, _) => ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 140),
@@ -96,8 +106,14 @@ class _FeedPageState extends ConsumerState<FeedPage> {
                       kudosed: _kudosOf(activity).mine,
                       kudosCount: _kudosOf(activity).count,
                       // The API allows no kudos on your own activity.
-                      onKudos: activity.userId != 0 && activity.userId == myId ? null : () => _toggleKudos(activity),
-                      onShare: () => showActivityShareSheet(context, activity, isMine: myId == activity.userId),
+                      onKudos: activity.userId != 0 && activity.userId == myId
+                          ? null
+                          : () => _toggleKudos(activity),
+                      onShare: () => showActivityShareSheet(
+                        context,
+                        activity,
+                        isMine: myId == activity.userId,
+                      ),
                       onTap: () => _open(activity.id),
                     );
                   },

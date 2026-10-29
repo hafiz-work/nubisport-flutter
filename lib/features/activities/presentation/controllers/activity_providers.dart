@@ -6,7 +6,9 @@ import '../../domain/models/activity.dart';
 
 /// Scoped to the signed-in account: log in as a different demo account and
 /// "Aktiviti saya" shows that account's runs.
-final myActivitiesProvider = FutureProvider.autoDispose<List<Activity>>((ref) async {
+final myActivitiesProvider = FutureProvider.autoDispose<List<Activity>>((
+  ref,
+) async {
   final user = ref.watch(authControllerProvider).value;
   if (user == null) return const [];
   return ref.watch(activityRepositoryProvider).myActivities(userId: user.id);
@@ -16,6 +18,7 @@ final activityFeedProvider = FutureProvider.autoDispose<List<Activity>>((ref) {
   return ref.watch(activityRepositoryProvider).feed();
 });
 
-final activityDetailProvider = FutureProvider.autoDispose.family<Activity?, String>((ref, id) {
-  return ref.watch(activityRepositoryProvider).activity(id);
-});
+final activityDetailProvider = FutureProvider.autoDispose
+    .family<Activity?, String>((ref, id) {
+      return ref.watch(activityRepositoryProvider).activity(id);
+    });
