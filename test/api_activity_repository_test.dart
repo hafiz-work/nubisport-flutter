@@ -48,6 +48,11 @@ void main() {
                   'startedAt': '2026-10-25T06:30:00Z',
                   'name': 'Subuh',
                   'sport': 'other',
+                  'preview': [
+                    [3.07, 101.51],
+                    [3.08, 101.52],
+                  ],
+                  'kudos': 2,
                 },
               ],
             },
@@ -55,6 +60,11 @@ void main() {
         ),
       }).myActivities(userId: 7);
 
+      // ?preview=1 rows: the map shape and kudos count for the profile cards.
+      expect(items.first.route.length, 2);
+      expect(items.first.latitude, 3.07);
+      expect(items.first.kudos, 2);
+      expect(items.last.route, isEmpty);
       expect(items.map((a) => a.id), ['13', '12']);
       expect(items.last.title, 'Run');
       expect(items.last.userName, 'Aina');

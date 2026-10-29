@@ -571,7 +571,7 @@ CameraPosition? fitCamera(
   // Capped so a tiny route (or a treadmill dot) doesn't zoom into a single building.
   final zoom =
       math.min(math.log(math.min(w / spanX, h / spanY)) / math.ln2, 17.0) -
-      (tilt > 0 ? 0.35 : 0);
+      (tilt > 0 ? 0.2 : 0);
   // Shift the camera so the route centres in the padded box, not the whole screen.
   final scale = tile * math.pow(2, zoom);
   final cx = (x1 + x2) / 2 - (padding.left - padding.right) / 2 / scale;

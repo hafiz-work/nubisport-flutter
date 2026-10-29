@@ -167,12 +167,14 @@ class _ActivityDetailState extends ConsumerState<_ActivityDetail> {
     final height = _bodyHeight > 0
         ? _bodyHeight
         : MediaQuery.sizeOf(context).height;
+    // Tight margins so the route fills the visible map, like Strava; the right side clears
+    // the map buttons (42 px wide, 12 px from the edge).
     return EdgeInsets.fromLTRB(
-      40,
-      MediaQuery.paddingOf(context).top + _topBarHeight + 16,
-      72,
+      24,
+      MediaQuery.paddingOf(context).top + _topBarHeight + 8,
+      62,
       // Capped so a tall sheet still leaves room to fit the route.
-      math.min(height * sheet, height * 0.58) + 24,
+      math.min(height * sheet, height * 0.58) + 12,
     );
   }
 

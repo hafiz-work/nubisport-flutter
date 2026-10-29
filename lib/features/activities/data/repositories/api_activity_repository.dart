@@ -26,7 +26,8 @@ class ApiActivityRepository implements ActivityRepository {
     // shortcut: whole history in one call (server caps at 5000 per member), page by date range if it gets slow.
     final res = await _dio.get<Map<String, dynamic>>(
       '/me/apps/nubi/activities',
-      queryParameters: {'from': '2000-01-01'},
+      // preview=1: route shape + kudos per row, so own cards draw a map like the feed's.
+      queryParameters: {'from': '2000-01-01', 'preview': '1'},
     );
     final rows = (res.data?['data']?['activities'] as List?) ?? const [];
     final items = [
@@ -142,12 +143,20 @@ Activity ownFromJson(
     json,
     userId: me?.id ?? 0,
     userName: me?.name ?? '',
-    route: track?.route ?? const [],
-    kudos: 0,
+    route: track != null && track.route.length > 1
+        ? track.route
+        : _preview(json),
+    kudos: (json['kudos'] as num?)?.toInt() ?? 0,
     splits: track?.splits ?? const [],
     samples: track?.samples ?? const [],
   );
 }
+
+/// The list/feed route preview: [[lat, lon], ...]; empty when absent.
+List<GeoPoint> _preview(Map<String, dynamic> json) => [
+  for (final p in (json['preview'] as List?) ?? const [])
+    GeoPoint((p[0] as num).toDouble(), (p[1] as num).toDouble()),
+];
 
 Activity feedFromJson(
   Map<String, dynamic> json,
@@ -164,10 +173,7 @@ Activity feedFromJson(
         (json['author'] as Map<String, dynamic>?)?['name'] as String? ?? '',
     route: track != null && track.route.length > 1
         ? track.route
-        : [
-            for (final p in (json['preview'] as List?) ?? const [])
-              GeoPoint((p[0] as num).toDouble(), (p[1] as num).toDouble()),
-          ],
+        : _preview(json),
     kudos:
         ((json['kudos'] as Map<String, dynamic>?)?['count'] as num?)?.toInt() ??
         0,

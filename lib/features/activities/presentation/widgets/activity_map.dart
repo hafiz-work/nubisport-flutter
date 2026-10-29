@@ -364,7 +364,7 @@ class _ActivityMapState extends State<ActivityMap>
                 ? CameraFit.coordinates(
                     coordinates: route,
                     padding:
-                        widget.initialFocusPadding ?? const EdgeInsets.all(36),
+                        widget.initialFocusPadding ?? const EdgeInsets.all(20),
                     maxZoom: 16,
                   )
                 : null,
