@@ -89,7 +89,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Pick Your Distance.'), findsOneWidget);
-    expect(find.text('5k - 50k'), findsOneWidget);
+    expect(find.text('5K, 10K, 21K, 42K'), findsOneWidget);
     expect(find.text('6+ weeks'), findsOneWidget);
     expect(find.text('Example week'), findsOneWidget);
     expect(find.text('Weekly total'), findsOneWidget);
