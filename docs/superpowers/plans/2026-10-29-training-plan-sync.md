@@ -18,7 +18,7 @@
 - Owner decision (2026-10-29), which supersedes Task 2's direction: the engine's source is `hono-workers/src/services/nubi-plan/engine/`. The five files in `nubisport-astro/src/lib/` (`plan-5k`, `distance-plan`, `date`, `maf`, `plan-core`) are generated copies, written by `bun scripts/sync-plan-engine.ts` in hono-workers, and are never hand-edited. See Task 2b.
 - hono-workers has unrelated uncommitted work (`docs/telegram.md`, `scripts/verify-telegram.ts`, `src/services/telegram.ts`). Never stage or modify those files.
 - Each repo works on a branch `feat/plan-sync`. Commits end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
-- App copy is in Malay and matches the existing screens. Flutter code is formatted with `dart format -l 120` on touched files only.
+- App screen text is English, matching the upstream pages (owner's fork, pulled 2026-10-29). Session titles/instructions come from the API engine and stay Malay. Follow the upstream layout: `domain/models`, `domain/repositories`, `data/repositories`, `presentation/{pages,controllers,widgets}`, and navigate only through `AppRoutes` / `AppRouter.onGenerateRoute` / `AppNavigator`. Flutter code is formatted with `dart format -l 120` on touched files only.
 
 ## Review Focus
 
@@ -170,60 +170,57 @@
 - [ ] **Step 4: Verify.** `flutter test` should pass everything and `flutter analyze` should report no issues.
 - [ ] **Step 5: Commit.** `git switch -c feat/plan-sync` (first commit only), then `git add lib/features/plans test && git commit -m "feat(plans): cloud plan repository over plan-build"`.
 
-### Task 5: Plan list and plan view (nubisport-flutter)
+### Task 4b: Rebase the branch onto the owner's upstream (nubisport-flutter)
+
+Upstream `main` (bc8ecce) reorganised folders, added central routing and a Strava-style plan catalog, and expanded the mock activity repo. Rebase `feat/plan-sync` (commits dc47938 activities API, 4ed7281 docs, f6983e3 plan data layer) onto `main` with `git rebase main`, resolving every conflict so that:
+- Activities: upstream's files and moves win (`data/repositories/`, `domain/models/`, `domain/repositories/`, `presentation/controllers/`, the 2400-line mock, the share sheet). Our behaviour is re-applied on top: `ApiActivityRepository` in `data/repositories/api_activity_repository.dart`; the provider's `isMock` switch; `ActivityType.other` (label 'Activity', icon `Icons.fitness_center`, matching upstream's language); `kudosed` + `setKudos` on the domain, API and mock; the feed page's optimistic kudos; profile/own-activity kudos display-only; card and detail guards for an empty `route` / `location`.
+- Plans data layer moves to `domain/models/plan.dart`, `domain/repositories/plan_repository.dart`, `data/repositories/{api_plan_repository,mock_plan_repository,plan_repository_provider}.dart`. Tests move with their imports fixed.
+- Imports follow upstream paths, for example `auth/domain/models/app_user.dart`.
+- After each conflicted commit: `flutter analyze` is clean and `flutter test` passes, before `git rebase --continue`. At the end, `dart format -l 120` touched files only, and all tests pass (upstream's plus ours).
+
+### Task 5: "My plans" and plan view (nubisport-flutter)
 
 **Files:**
-- Create: `lib/features/plans/presentation/plan_providers.dart`
-- Create: `lib/features/plans/presentation/plan_view_page.dart`
-- Rewrite: `lib/features/plans/presentation/plans_page.dart` (the class name `PlansPage` stays, because home, settings and profile push it)
+- Create: `lib/features/plans/presentation/controllers/plan_providers.dart`
+- Create: `lib/features/plans/presentation/pages/plan_view_page.dart`
+- Create: `lib/features/plans/presentation/pages/plan_form_page.dart`. This is a placeholder `PlanFormPage({PlanFormArgs args = const PlanFormArgs()})`, a Scaffold titled 'New plan' / 'Update plan', which Task 6 replaces. `PlanFormArgs` is defined in Task 6's Interfaces; create the class here with the same fields.
+- Modify: `lib/features/plans/presentation/pages/training_plans_page.dart` (add a "My plans" section above the catalog; the page becomes a `ConsumerWidget`)
+- Modify: `lib/core/navigation/app_routes.dart` (add `planView = '/training-plans/view'`), `app_router.dart` (`planView` → `PlanViewPage(plan: args as CloudPlan)`, and `planBuilder` → `PlanFormPage(args: arguments is PlanFormArgs ? arguments : const PlanFormArgs())`), `app_navigator.dart` (`planView(context, CloudPlan)`, `planBuilder(context, [PlanFormArgs])`)
 - Test: `test/plans_page_test.dart`
 
 **Interfaces:**
-- Consumes: Task 4 `PlanRepository`, `CloudPlan`, `BuiltPlan`, `planRepositoryProvider`.
-- Produces:
-  - `cloudPlansProvider = FutureProvider.autoDispose<({int limit, List<CloudPlan> items})>`
-  - `activePlanProvider = FutureProvider.autoDispose<({String? plan, String? walkUntil})>`
-  - `builtPlanProvider = FutureProvider.autoDispose.family<BuiltPlan, CloudPlan>`. It calls `build(kind, params: plan.data, key: plan.key, walkUntil: <active walkUntil if this plan is active>)`.
-  - `PlanViewPage({required CloudPlan plan})`.
-  - The `PlansPage` list shows: header "Pelan saya (n/limit)"; one tile per plan with the kind label (5K/10K/21K/42K), `progress.length` + " sesi siap", and an "Aktif" chip when the key equals the active plan; a "Buat pelan" button that pushes Task 6's `PlanFormPage()`. Empty: "Belum ada pelan. Buat pelan pertama anda." Load error: "Tak dapat muat pelan." with a retry button.
-- `PlanViewPage` behaviour:
-  - Weeks are ExpansionTiles: "Minggu {no} · {phase}" plus a "Ringan" tag. Each session row has a checkbox, the title, minutes, and the date as `d/M` when `date != null`.
-  - Ticking is optimistic. It keeps the local `Set<String> done` (seeded from `plan.progress`) and debounces 1.5 s, then calls `save(key, engine: built.engine, data: plan.data, progress: done.toList())`. On error it restores the previous set and shows the SnackBar "Tak dapat simpan tanda. Cuba lagi.". On dispose, any pending save is flushed.
-  - Menu: "Jadikan aktif" (`setActive`); walk mode "Mod jalan 7 hari" / "14 hari" / "Lanjut 7 hari" / "Tamat mod jalan" (only when active; `walkUntil = today + N-1` in `yyyy-MM-dd`, using Malaysia dates); "Kemas kini pelan" (pushes `PlanFormPage(existing: plan)`); "Padam" (confirm dialog, `delete`, pop).
-  - When `plan.engine != built.engine`: no checkboxes and no menu except Padam, and a banner "Pelan ini dari versi lama. Buka di web untuk sambung."
+- Consumes: Task 4's `PlanRepository`, `CloudPlan`, `BuiltPlan`, `planRepositoryProvider`.
+- Produces: `cloudPlansProvider`, `activePlanProvider`, `builtPlanProvider` (same signatures as the earlier version of this task); `PlanViewPage({required CloudPlan plan})`.
+- "My plans" section: header 'My plans (n/limit)'. Each tile shows the kind label (5K/10K/21K/42K), '`progress.length` sessions done' and an 'Active' chip; tapping opens `AppNavigator.planView`. Empty: 'No plans yet - pick one below.' Error: "Couldn't load your plans." plus 'Retry'. Signed-out users or a failed list don't block the catalog below.
+- `PlanViewPage` behaviour is as the earlier version of this task described, with English labels: week tiles 'Week {no} · {phase}' plus a 'Light' tag; ticks optimistic with a 1.5 s debounce and a flush on dispose, rollback plus SnackBar "Couldn't save. Try again."; menu 'Set as active', 'Walk mode 7 days' / '14 days' / 'Extend 7 days' / 'End walk mode' (only when active), 'Update plan' (`AppNavigator.planBuilder(context, PlanFormArgs(existing: plan))`), 'Delete' (confirm). Engine mismatch → read-only with the banner 'This plan was made with an older version. Open it on the web to continue.'
 
-- [ ] **Step 1: Write widget tests** with a fake `PlanRepository` that overrides `planRepositoryProvider`: `list shows plans, quota and active chip`; `empty state`; `tick saves after debounce` (`pump(1600ms)` → save called once with the progress `['1.0']`); `failed tick rolls back` (save throws → checkbox unchecked again plus the SnackBar text); `engine mismatch is read-only` (no `Checkbox` widgets, banner shown); `undated plan` renders with no date text.
-- [ ] **Step 2: Run the tests.** `flutter test test/plans_page_test.dart` should FAIL.
-- [ ] **Step 3: Implement** the providers, the list page and the view page per the Interfaces.
-- [ ] **Step 4: Verify.** `flutter test && flutter analyze` should pass with no issues.
-- [ ] **Step 5: Commit.** `git commit -m "feat(plans): cloud plan list and plan view with synced ticks"`
+- [ ] **Step 1:** Write widget tests with a fake `PlanRepository`: `my plans shows quota and active chip`; `empty my plans still shows catalog`; `tick saves after debounce`; `failed tick rolls back`; `engine mismatch is read-only`; `undated plan`; `planView route opens PlanViewPage`. Run them and expect FAIL.
+- [ ] **Step 2:** Implement. Keep upstream's `test/training_plans_test.dart` and `test/navigation_test.dart` passing; update their expectations only where the new section or route changes them.
+- [ ] **Step 3:** `flutter test && flutter analyze` should pass, then commit `feat(plans): my cloud plans and plan view with synced ticks`.
 
-### Task 6: Plan form, and remove the old generator (nubisport-flutter)
+### Task 6: Plan form behind the catalog cards; drop the local generator (nubisport-flutter)
 
 **Files:**
-- Create: `lib/features/plans/presentation/plan_form_page.dart`
-- Delete: `lib/features/plans/domain/training_plan.dart`, `test/plan_test.dart`
+- Rewrite: `lib/features/plans/presentation/pages/plan_form_page.dart`
+- Modify: `lib/features/plans/presentation/pages/training_plans_page.dart` (catalog "Continue" mapping, Distance card copy)
+- Delete: `lib/features/plans/presentation/pages/plans_page.dart`, `lib/features/plans/domain/models/training_plan.dart`, `test/plan_test.dart`
 - Test: `test/plan_form_test.dart`
 
 **Interfaces:**
-- Consumes: Task 4 `build`, `save`, `list`, `PlanBuildFailure`, `PlanQuotaFull`; Task 5 providers (invalidate `cloudPlansProvider` after a save).
-- Produces: `PlanFormPage({CloudPlan? existing})`.
-- Prefill (new plans only): from `trainingProfile()` take `hari`, and the kind's `masa` from `masa5k` (5K and 10K prerequisite), `masa10k` (21K) or `masa21k` (42K). Never overwrite what the user typed.
-- Fields and stored params (names exactly as in the web's `PARAM` regex):
-  - 5K: `tahap` (sifar/jalan/5k, labels from the web's `LEVELS`); either `bulan` (2/3/4/6) or a race date (`lumba` plus `bulan = "<weeks>w"`, with weeks computed by the API, so send `lumba` + `mula` and let `normalizePlanParams` / the engine decide); `masa` (required when `tahap == 5k`, otherwise optional, 15-60); `hari` (3/4); optional `pace` (s/km, 240-540, entered as m:ss); optional `mula` (date).
-  - 10K/21K/42K: `minggu` (that distance's list, default `mingguLalai`) or `lumba`; `masa` (prerequisite time, hidden by the "Saya pemula" toggle, which is never sent); optional `sasaran` or `pace`; `hari`; optional `mula`.
-  - Read the exact options, ranges and labels from `nubisport-astro/src/components/Plan5kForm.astro` and `DistancePlanForm.astro`. If race-date input is handled in the page script rather than in `normalizePlanParams`, do the same mapping in the form and document it in a one-line comment.
-- Flow:
-  - "Pratonton" calls `build`. A `PlanBuildFailure` shows `reason`, plus a "Guna N bulan/minggu" button when a suggestion is present. On success it shows weeks/sessions count and `warnings`.
-  - "Simpan" saves with `engine` and `params` from the build. It uses `progress: []` for new plans, or `built.progress` when `existing` is set (build was called with `key: existing.key`, `previous: (params: existing.data, progress: existing.progress)`).
-  - On `PlanQuotaFull`, a dialog "Awan penuh (n/limit). Ganti pelan:" lists the current plans; picking one calls `save(..., replace: thatKey)`.
-  - After a successful save, invalidate `cloudPlansProvider` and pop.
+- `class PlanFormArgs { const PlanFormArgs({this.kind, this.tahap, this.raceDate = false, this.existing}); final PlanKind? kind; final String? tahap; final bool raceDate; final CloudPlan? existing; }`
+- Catalog "Continue" mapping (owner-approved):
+  - Race → `PlanFormArgs(raceDate: true)`, where the form asks for the distance (5K/10K/21K/42K) and the race date `lumba`.
+  - 5k improvement → `PlanFormArgs(kind: PlanKind.fiveK, tahap: '5k')`.
+  - Start running → `PlanFormArgs(kind: PlanKind.fiveK, tahap: 'sifar')`, with the level selectable between 'sifar' and 'jalan'.
+  - Distance Plans → `PlanFormArgs()`, where the form asks for 10K/21K/42K and weeks.
+  - General training stays 'coming soon'.
+  - The Distance card text "5-50km" / "5k - 50k" becomes "5K, 10K, 21K, 42K".
+- Fields, params, prefill, preview (`build`), save, update (remapped progress), quota-full replace dialog and `pemula` toggle are as the earlier version of this task described, with English labels. Params keep the web's names (`tahap`, `bulan`, `minggu`, `lumba`, `masa`, `sasaran`, `pace`, `hari`, `mula`). Read options and ranges from `nubisport-astro/src/components/Plan5kForm.astro` / `DistancePlanForm.astro`. Engine refusal text comes from the API in Malay and is shown as-is.
+- After save: invalidate `cloudPlansProvider`, then `Navigator.pop` back to the catalog.
 
-- [ ] **Step 1: Write widget tests** with a fake repository: `5k preview shows session count`; `engine refusal shows reason and suggestion button`; `save new plan sends empty progress`; `update sends remapped progress`; `quota full offers replace` (save throws `PlanQuotaFull(1)` → dialog → tap plan → save called with `replace`); `pemula hides masa and does not send it`; `prefills hari and masa from training profile`.
-- [ ] **Step 2: Run the tests.** `flutter test test/plan_form_test.dart` should FAIL.
-- [ ] **Step 3: Implement** `PlanFormPage`, delete the old generator and its test, and fix any imports `flutter analyze` reports.
-- [ ] **Step 4: Verify.** `flutter test && flutter analyze` should pass with no issues, and `grep -rn training_plan lib test` should be empty.
-- [ ] **Step 5: Commit.** `git commit -m "feat(plans): create and update plans from the app; drop the local generator"`
+- [ ] **Step 1:** Write widget tests: `5k preview shows session count`; `engine refusal shows reason and suggestion button`; `save new plan sends empty progress`; `update sends remapped progress`; `quota full offers replace`; `pemula hides masa and does not send it`; `prefills hari and masa from training profile`; `catalog cards open the form with mapped args` (Race / 5k improvement / Start running / Distance). Run them and expect FAIL.
+- [ ] **Step 2:** Implement and delete the old generator. `grep -rn "training_plan.dart\|PlansPage\b" lib test` should be empty.
+- [ ] **Step 3:** `flutter test && flutter analyze` should pass, then commit `feat(plans): build plans from the catalog through the API; drop the local generator`.
 
 ### Task 7: End-to-end check against a local API
 
