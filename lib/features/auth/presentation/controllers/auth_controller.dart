@@ -18,20 +18,23 @@ class AuthController extends AsyncNotifier<AppUser?> {
   }
 
   /// Throws [AuthFailure]; state stays signed out on failure so the form keeps its input.
-  Future<void> login({required String email, required String password}) async {
-    // shortcut: no captcha token - production login needs one (API enforces Turnstile);
-    // plug a mobile captcha/attestation provider in here once the backend path is decided.
-    final user = await _repo.login(email: email, password: password);
+  Future<void> login({required String email, required String password, String? captchaToken}) async {
+    final user = await _repo.login(email: email, password: password, captchaToken: captchaToken);
     state = AsyncData(user);
   }
 
   /// Creates the account; the user still has to verify their email before signing in,
   /// so the auth state is left untouched. Throws [AuthFailure].
-  Future<void> register({required String name, required String email, required String password}) =>
-      _repo.register(name: name, email: email, password: password);
+  Future<void> register({
+    required String name,
+    required String email,
+    required String password,
+    String? captchaToken,
+  }) => _repo.register(name: name, email: email, password: password, captchaToken: captchaToken);
 
   /// Mails a reset link when the address has an account. Throws [AuthFailure].
-  Future<void> forgotPassword({required String email}) => _repo.forgotPassword(email: email);
+  Future<void> forgotPassword({required String email, String? captchaToken}) =>
+      _repo.forgotPassword(email: email, captchaToken: captchaToken);
 
   /// PATCH /me through the repository; refreshes the signed-in user on success.
   Future<AppUser> updateProfile({

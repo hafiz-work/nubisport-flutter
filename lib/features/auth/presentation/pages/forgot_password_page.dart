@@ -5,6 +5,7 @@ import '../../../../shared/widgets/brand.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../controllers/auth_controller.dart';
 import '../widgets/auth_error_box.dart';
+import '../widgets/captcha.dart';
 
 class ForgotPasswordPage extends ConsumerStatefulWidget {
   const ForgotPasswordPage({super.key});
@@ -34,7 +35,11 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
       _error = null;
     });
     try {
-      await ref.read(authControllerProvider.notifier).forgotPassword(email: _email.text.trim());
+      final captchaToken = await ref.read(captchaSolverProvider)('reset');
+      if (captchaToken == null) throw const AuthFailure(AuthFailureReason.captcha);
+      await ref
+          .read(authControllerProvider.notifier)
+          .forgotPassword(email: _email.text.trim(), captchaToken: captchaToken);
       if (mounted) setState(() => _done = true);
     } on AuthFailure catch (e) {
       if (mounted) setState(() => _error = forgotPasswordMessage(e.reason));
@@ -100,7 +105,7 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
                                 child: _busy
                                     ? const SizedBox.square(
                                         dimension: 20,
-                                        child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                                        child: CircularProgressIndicator.adaptive(strokeWidth: 2.5),
                                       )
                                     : const Text('Send reset link'),
                               ),
@@ -152,6 +157,7 @@ class _ResetSent extends StatelessWidget {
 /// Same wording as the web forgot-password page (nubisport-astro src/pages/forgot-password.astro).
 String forgotPasswordMessage(AuthFailureReason reason) => switch (reason) {
   AuthFailureReason.invalidEmail => 'Enter a valid email.',
+  AuthFailureReason.captcha => 'Spam check failed. Try again.',
   AuthFailureReason.rateLimited => 'Too many attempts. Wait a minute.',
   AuthFailureReason.network => 'No connection. Check your internet and try again.',
   _ => 'Can\'t send right now. Try again shortly.',

@@ -16,7 +16,7 @@ abstract interface class AuthRepository {
 
   /// Sends a reset link when the email has an account. The server never reveals whether
   /// it exists. Throws [AuthFailure] on transport/validation failures.
-  Future<void> forgotPassword({required String email});
+  Future<void> forgotPassword({required String email, String? captchaToken});
 
   /// Updates the signed-in account (PATCH /me) and returns the fresh user.
   Future<AppUser> updateProfile({

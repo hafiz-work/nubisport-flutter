@@ -176,7 +176,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                       child: _busy
                           ? const SizedBox.square(
                               dimension: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                              child: CircularProgressIndicator.adaptive(strokeWidth: 2.5),
                             )
                           : const Text('Save'),
                     ),

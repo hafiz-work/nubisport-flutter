@@ -60,7 +60,7 @@ class _ActivityMap3DState extends State<ActivityMap3D> with SingleTickerProvider
   Timer? _introTimer;
   MapLibreMapController? _map;
   bool _styleReady = false;
-  int _lastDrawMs = 0;
+  bool _drawing = false;
 
   List<LatLng> get _route => [for (final p in widget.activity.route) LatLng(p.latitude, p.longitude)];
   bool get _hasRoute => _route.length > 1;
@@ -73,7 +73,8 @@ class _ActivityMap3DState extends State<ActivityMap3D> with SingleTickerProvider
     super.initState();
     _routeController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2400),
+      // Same pace and easing as the 2D map (activity_map.dart).
+      duration: const Duration(milliseconds: 4500),
       value: _animate ? 0 : 1,
     )..addListener(_onRouteTick);
   }
@@ -98,11 +99,23 @@ class _ActivityMap3DState extends State<ActivityMap3D> with SingleTickerProvider
     super.dispose();
   }
 
+  double get _progress => Curves.easeInOutSine.transform(_routeController.value);
+
+  // One draw in flight at a time, always the latest progress: as smooth as the platform
+  // channel allows, without queueing stale frames.
   void _onRouteTick() {
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _lastDrawMs < 45) return;
-    _lastDrawMs = now;
-    unawaited(_drawRoute(_routeController.value));
+    if (_drawing) return;
+    _drawing = true;
+    unawaited(_drawLatest());
+  }
+
+  Future<void> _drawLatest() async {
+    double drawn;
+    do {
+      drawn = _progress;
+      await _drawRoute(drawn);
+    } while (mounted && drawn != _progress);
+    _drawing = false;
   }
 
   Future<void> _onStyleLoaded() async {
@@ -174,7 +187,10 @@ class _ActivityMap3DState extends State<ActivityMap3D> with SingleTickerProvider
       ),
     );
 
-    unawaited(_drawRoute(_routeController.value));
+    unawaited(_drawRoute(_progress));
+    // Let the camera settle first, so the line is not drawn while the view is still moving.
+    await _fitRoute(initial: true);
+    if (!mounted) return;
 
     if (_animate) {
       _introTimer = Timer(widget.introDelay, () {

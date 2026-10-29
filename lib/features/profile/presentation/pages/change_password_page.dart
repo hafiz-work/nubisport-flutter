@@ -188,7 +188,7 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
                         child: _busy
                             ? const SizedBox.square(
                                 dimension: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                                child: CircularProgressIndicator.adaptive(strokeWidth: 2.5),
                               )
                             : const Text('Change password'),
                       ),

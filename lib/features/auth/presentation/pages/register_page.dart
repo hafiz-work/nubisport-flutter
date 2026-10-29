@@ -6,6 +6,7 @@ import '../../../../shared/widgets/brand.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../controllers/auth_controller.dart';
 import '../widgets/auth_error_box.dart';
+import '../widgets/captcha.dart';
 
 class RegisterPage extends ConsumerStatefulWidget {
   const RegisterPage({super.key});
@@ -42,9 +43,16 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
       _error = null;
     });
     try {
+      final captchaToken = await ref.read(captchaSolverProvider)('register');
+      if (captchaToken == null) throw const AuthFailure(AuthFailureReason.captcha);
       await ref
           .read(authControllerProvider.notifier)
-          .register(name: _name.text.trim(), email: _email.text.trim(), password: _password.text);
+          .register(
+            name: _name.text.trim(),
+            email: _email.text.trim(),
+            password: _password.text,
+            captchaToken: captchaToken,
+          );
       if (mounted) setState(() => _done = true);
     } on AuthFailure catch (e) {
       if (mounted) setState(() => _error = registerMessage(e.reason));
@@ -162,7 +170,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                                 child: _busy
                                     ? const SizedBox.square(
                                         dimension: 20,
-                                        child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                                        child: CircularProgressIndicator.adaptive(strokeWidth: 2.5),
                                       )
                                     : const Text('Sign up'),
                               ),
@@ -371,7 +379,7 @@ String registerMessage(AuthFailureReason reason) => switch (reason) {
   AuthFailureReason.invalidEmail => 'Enter a valid email.',
   AuthFailureReason.weakPassword => 'Password must be 12 to 200 characters.',
   AuthFailureReason.emailTaken => 'This email is already registered. Try logging in.',
-  AuthFailureReason.captcha => 'Spam check failed. App sign-up is not enabled for this server yet.',
+  AuthFailureReason.captcha => 'Spam check failed. Try again.',
   AuthFailureReason.rateLimited => 'Too many attempts. Wait a minute.',
   AuthFailureReason.network => 'No connection. Check your internet and try again.',
   _ => 'Can\'t sign up right now. Try again shortly.',

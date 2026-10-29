@@ -232,7 +232,7 @@ class _PlanViewPageState extends ConsumerState<PlanViewPage> {
         ],
       ),
       body: built.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const Center(child: CircularProgressIndicator.adaptive()),
         error: (_, _) => Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
