@@ -36,7 +36,15 @@ simplified 5K-only generator, so its sessions don't line up with the web's.
 
 ## Design
 
-### 1. Web stays the source of the generator (`nubisport-astro`)
+### 1. The generator lives in the backend; the web keeps a generated copy
+
+Owner decision (2026-10-29): `hono-workers/src/services/nubi-plan/engine/` holds the source of
+`plan-5k.ts`, `distance-plan.ts`, `date.ts`, `maf.ts`, `plan-core.ts` and their pure checks.
+`hono-workers/scripts/sync-plan-engine.ts` copies them into `nubisport-astro/src/lib/` with a
+"generated, do not edit" header (`--check` reports drift). The web keeps running its copy in the
+browser (offline + signed-out unchanged). The extraction below was done first in the web, then moved.
+
+#### 1a. Extraction (done in the web, before the move)
 
 - Extract the DOM-free parts that turn inputs into a plan into one pure module
   `src/lib/plan-core.ts`: `planFromParams`, `planSessionDate`, `planSessions` (from `plan-sync.ts`),
