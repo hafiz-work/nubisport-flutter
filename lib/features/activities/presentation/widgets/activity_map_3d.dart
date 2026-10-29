@@ -119,7 +119,10 @@ class _ActivityMap3DState extends State<ActivityMap3D>
   void didUpdateWidget(covariant ActivityMap3D oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.focusTrigger != oldWidget.focusTrigger) {
-      unawaited(_fitRoute());
+      // After layout: _fitRoute reads the map's size, which isn't readable during build.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_fitRoute());
+      });
     }
     if (widget.tilted != oldWidget.tilted) {
       unawaited(_applyTilt());
