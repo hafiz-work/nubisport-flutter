@@ -41,7 +41,8 @@ class ActivityMap3D extends StatefulWidget {
   State<ActivityMap3D> createState() => _ActivityMap3DState();
 }
 
-class _ActivityMap3DState extends State<ActivityMap3D> with SingleTickerProviderStateMixin {
+class _ActivityMap3DState extends State<ActivityMap3D>
+    with SingleTickerProviderStateMixin {
   static const _routeSource = 'nubi-route';
   static const _routeCasingLayer = 'nubi-route-casing';
   static const _routeLayer = 'nubi-route-line';
@@ -62,11 +63,14 @@ class _ActivityMap3DState extends State<ActivityMap3D> with SingleTickerProvider
   bool _styleReady = false;
   bool _drawing = false;
 
-  List<LatLng> get _route => [for (final p in widget.activity.route) LatLng(p.latitude, p.longitude)];
+  List<LatLng> get _route => [
+    for (final p in widget.activity.route) LatLng(p.latitude, p.longitude),
+  ];
   bool get _hasRoute => _route.length > 1;
   bool get _animate => widget.animateRoute && _hasRoute;
 
-  LatLng get _center => LatLng(widget.activity.latitude, widget.activity.longitude);
+  LatLng get _center =>
+      LatLng(widget.activity.latitude, widget.activity.longitude);
 
   @override
   void initState() {
@@ -99,7 +103,8 @@ class _ActivityMap3DState extends State<ActivityMap3D> with SingleTickerProvider
     super.dispose();
   }
 
-  double get _progress => Curves.easeInOutSine.transform(_routeController.value);
+  double get _progress =>
+      Curves.easeInOutSine.transform(_routeController.value);
 
   // One draw in flight at a time, always the latest progress: as smooth as the platform
   // channel allows, without queueing stale frames.
@@ -130,12 +135,22 @@ class _ActivityMap3DState extends State<ActivityMap3D> with SingleTickerProvider
     await map.addLineLayer(
       _routeSource,
       _routeCasingLayer,
-      const LineLayerProperties(lineColor: '#FFFFFF', lineWidth: 8.5, lineJoin: 'round', lineCap: 'round'),
+      const LineLayerProperties(
+        lineColor: '#FFFFFF',
+        lineWidth: 8.5,
+        lineJoin: 'round',
+        lineCap: 'round',
+      ),
     );
     await map.addLineLayer(
       _routeSource,
       _routeLayer,
-      LineLayerProperties(lineColor: _hex(AppColors.orange), lineWidth: 5.5, lineJoin: 'round', lineCap: 'round'),
+      LineLayerProperties(
+        lineColor: _hex(AppColors.orange),
+        lineWidth: 5.5,
+        lineJoin: 'round',
+        lineCap: 'round',
+      ),
     );
     // Same orange arrows as the 2D map, revealed as the line passes them.
     await map.addImage(_arrowImage, await _arrowPng());
@@ -188,7 +203,8 @@ class _ActivityMap3DState extends State<ActivityMap3D> with SingleTickerProvider
     );
 
     unawaited(_drawRoute(_progress));
-    // Let the camera settle first, so the line is not drawn while the view is still moving.
+    // Intro: fly from the wide flat view down into the tilted fit, then draw the line once
+    // the camera has settled.
     await _fitRoute(initial: true);
     if (!mounted) return;
 
@@ -197,7 +213,6 @@ class _ActivityMap3DState extends State<ActivityMap3D> with SingleTickerProvider
         if (mounted) _routeController.forward();
       });
     }
-    await _fitRoute(initial: true);
   }
 
   Future<void> _drawRoute(double t) async {
@@ -220,32 +235,25 @@ class _ActivityMap3DState extends State<ActivityMap3D> with SingleTickerProvider
     }
   }
 
+  /// One camera move that frames the route inside [padding] with the tilt already applied.
+  /// newLatLngBounds can't take a tilt, and tilting afterwards both jerks and pushes the route
+  /// off screen, so the fit is worked out here (Web Mercator, 512 px tiles like MapLibre).
   Future<void> _fitRoute({bool initial = false}) async {
     final map = _map;
-    if (map == null || !_styleReady) return;
+    final size = context.size;
+    if (map == null || !_styleReady || size == null) return;
     final route = _route;
     if (route.isEmpty) return;
-    final padding = initial ? (widget.initialFocusPadding ?? widget.focusPadding) : widget.focusPadding;
-    final bounds = _bounds(route);
+    final padding = initial
+        ? (widget.initialFocusPadding ?? widget.focusPadding)
+        : widget.focusPadding;
+    final camera = fitCamera(_bounds(route), size, padding, tilt: _tilt);
+    if (camera == null) return;
     try {
       await map.animateCamera(
-        CameraUpdate.newLatLngBounds(
-          bounds,
-          left: padding.left,
-          top: padding.top,
-          right: padding.right,
-          bottom: padding.bottom,
-        ),
-        duration: const Duration(milliseconds: 600),
+        CameraUpdate.newCameraPosition(camera),
+        duration: Duration(milliseconds: initial ? 1800 : 700),
       );
-      // newLatLngBounds resets tilt; restore it and face north, undoing any user rotation.
-      final pos = map.cameraPosition;
-      if (pos != null) {
-        await map.animateCamera(
-          CameraUpdate.newCameraPosition(CameraPosition(target: pos.target, zoom: pos.zoom, bearing: 0, tilt: _tilt)),
-          duration: const Duration(milliseconds: 300),
-        );
-      }
     } catch (_) {}
   }
 
@@ -259,7 +267,12 @@ class _ActivityMap3DState extends State<ActivityMap3D> with SingleTickerProvider
       await map.animateCamera(
         CameraUpdate.newCameraPosition(
           // Flat mode also faces north, like a classic 2D map.
-          CameraPosition(target: pos.target, zoom: pos.zoom, bearing: widget.tilted ? pos.bearing : 0, tilt: _tilt),
+          CameraPosition(
+            target: pos.target,
+            zoom: pos.zoom,
+            bearing: widget.tilted ? pos.bearing : 0,
+            tilt: _tilt,
+          ),
         ),
         duration: const Duration(milliseconds: 500),
       );
@@ -268,6 +281,7 @@ class _ActivityMap3DState extends State<ActivityMap3D> with SingleTickerProvider
 
   void _replay() {
     _introTimer?.cancel();
+    unawaited(_fitRoute());
     _routeController.forward(from: 0);
   }
 
@@ -300,7 +314,10 @@ class _ActivityMap3DState extends State<ActivityMap3D> with SingleTickerProvider
       final a = route[i];
       final b = route[i + 1];
       points.add(
-        LatLng(a.latitude + (b.latitude - a.latitude) * fraction, a.longitude + (b.longitude - a.longitude) * fraction),
+        LatLng(
+          a.latitude + (b.latitude - a.latitude) * fraction,
+          a.longitude + (b.longitude - a.longitude) * fraction,
+        ),
       );
       break;
     }
@@ -315,6 +332,11 @@ class _ActivityMap3DState extends State<ActivityMap3D> with SingleTickerProvider
     return earth * math.sqrt(dLat * dLat + x * x);
   }
 
+  static LatLng _midpoint(LatLngBounds b) => LatLng(
+    (b.southwest.latitude + b.northeast.latitude) / 2,
+    (b.southwest.longitude + b.northeast.longitude) / 2,
+  );
+
   static LatLngBounds _bounds(List<LatLng> points) {
     var minLat = points.first.latitude;
     var maxLat = points.first.latitude;
@@ -326,7 +348,10 @@ class _ActivityMap3DState extends State<ActivityMap3D> with SingleTickerProvider
       minLng = math.min(minLng, p.longitude);
       maxLng = math.max(maxLng, p.longitude);
     }
-    return LatLngBounds(southwest: LatLng(minLat, minLng), northeast: LatLng(maxLat, maxLng));
+    return LatLngBounds(
+      southwest: LatLng(minLat, minLng),
+      northeast: LatLng(maxLat, maxLng),
+    );
   }
 
   static Map<String, dynamic> _lineJson(List<LatLng> points) => {
@@ -350,10 +375,11 @@ class _ActivityMap3DState extends State<ActivityMap3D> with SingleTickerProvider
   /// Evenly spaced points along the route with their heading, for direction arrows.
   List<({LatLng point, double bearing, double at})> get _arrows => [
     for (var i = 1; i <= _arrowCount; i++)
-      if ((_partialRoute(i / (_arrowCount + 1)).tip, _partialRoute(i / (_arrowCount + 1) + 0.01).tip) case (
-        final a?,
-        final b?,
-      ) when a != b)
+      if ((
+            _partialRoute(i / (_arrowCount + 1)).tip,
+            _partialRoute(i / (_arrowCount + 1) + 0.01).tip,
+          )
+          case (final a?, final b?) when a != b)
         (point: a, bearing: _bearing(a, b), at: i / (_arrowCount + 1)),
   ];
 
@@ -362,7 +388,9 @@ class _ActivityMap3DState extends State<ActivityMap3D> with SingleTickerProvider
     final lat2 = b.latitude * math.pi / 180;
     final dLng = (b.longitude - a.longitude) * math.pi / 180;
     final y = math.sin(dLng) * math.cos(lat2);
-    final x = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(dLng);
+    final x =
+        math.cos(lat1) * math.sin(lat2) -
+        math.sin(lat1) * math.cos(lat2) * math.cos(dLng);
     return math.atan2(y, x) * 180 / math.pi;
   }
 
@@ -374,7 +402,11 @@ class _ActivityMap3DState extends State<ActivityMap3D> with SingleTickerProvider
       textDirection: TextDirection.ltr,
       text: TextSpan(
         text: String.fromCharCode(Icons.navigation.codePoint),
-        style: TextStyle(fontSize: px, fontFamily: Icons.navigation.fontFamily, color: AppColors.orange),
+        style: TextStyle(
+          fontSize: px,
+          fontFamily: Icons.navigation.fontFamily,
+          color: AppColors.orange,
+        ),
       ),
     )..layout();
     painter.paint(Canvas(recorder), Offset.zero);
@@ -383,7 +415,9 @@ class _ActivityMap3DState extends State<ActivityMap3D> with SingleTickerProvider
     return bytes!.buffer.asUint8List();
   }
 
-  static Map<String, dynamic> _arrowJson(List<({LatLng point, double bearing, double at})> arrows) => {
+  static Map<String, dynamic> _arrowJson(
+    List<({LatLng point, double bearing, double at})> arrows,
+  ) => {
     'type': 'FeatureCollection',
     'features': [
       for (final a in arrows)
@@ -430,7 +464,11 @@ class _ActivityMap3DState extends State<ActivityMap3D> with SingleTickerProvider
           Positioned.fill(
             child: MapLibreMap(
               styleString: style,
-              initialCameraPosition: CameraPosition(target: _center, zoom: 14.2, tilt: _tilt),
+              // Wide and flat: the intro flies down into the tilted route fit.
+              initialCameraPosition: CameraPosition(
+                target: _hasRoute ? _midpoint(_bounds(_route)) : _center,
+                zoom: 11.5,
+              ),
               onMapCreated: (controller) => _map = controller,
               onStyleLoadedCallback: _onStyleLoaded,
               trackCameraPosition: true,
@@ -441,28 +479,37 @@ class _ActivityMap3DState extends State<ActivityMap3D> with SingleTickerProvider
               doubleClickZoomEnabled: true,
               compassEnabled: false,
               logoEnabled: false,
+              // Hidden like Strava's; the OSM/OpenFreeMap credit lives in the map style sheet.
               attributionButtonPosition: AttributionButtonPosition.bottomLeft,
-              attributionButtonColor: theme.colorScheme.onSurfaceVariant,
+              attributionButtonMargins: const math.Point(-200, -200),
               foregroundLoadColor: theme.colorScheme.surfaceContainerHigh,
             ),
           ),
           if (_animate)
+            // Small replay at bottom-left, riding just above the sheet like Strava's.
             Positioned(
-              right: 12,
+              left: 12,
               bottom: widget.controlsBottomInset,
               child: Tooltip(
                 message: 'Replay animation',
                 child: Material(
-                  color: theme.colorScheme.surface.withValues(alpha: 0.94),
-                  shape: const CircleBorder(),
-                  elevation: 3,
+                  color: Colors.black.withValues(alpha: 0.55),
+                  shape: CircleBorder(
+                    side: BorderSide(
+                      color: Colors.white.withValues(alpha: 0.35),
+                    ),
+                  ),
                   child: InkWell(
                     customBorder: const CircleBorder(),
                     onTap: _replay,
-                    child: SizedBox(
-                      width: 48,
-                      height: 48,
-                      child: Icon(Icons.play_arrow_rounded, size: 28, color: theme.colorScheme.primary),
+                    child: const SizedBox(
+                      width: 36,
+                      height: 36,
+                      child: Icon(
+                        Icons.play_arrow_outlined,
+                        size: 22,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ),
@@ -472,4 +519,48 @@ class _ActivityMap3DState extends State<ActivityMap3D> with SingleTickerProvider
       ),
     );
   }
+}
+
+/// Camera that frames [bounds] inside [size] minus [padding] (Web Mercator, 512 px tiles), or
+/// null when the padding leaves no room. Tilted views zoom out a little so the far end still fits.
+CameraPosition? fitCamera(
+  LatLngBounds bounds,
+  Size size,
+  EdgeInsets padding, {
+  double tilt = 0,
+}) {
+  final w = size.width - padding.horizontal;
+  final h = size.height - padding.vertical;
+  if (w <= 0 || h <= 0) return null;
+  double x(double lng) => (lng + 180) / 360;
+  double y(double lat) {
+    final sin = math.sin(lat * math.pi / 180);
+    return 0.5 - math.log((1 + sin) / (1 - sin)) / (4 * math.pi);
+  }
+
+  const tile = 512.0;
+  final x1 = x(bounds.southwest.longitude), x2 = x(bounds.northeast.longitude);
+  final y1 = y(bounds.northeast.latitude), y2 = y(bounds.southwest.latitude);
+  final spanX = math.max((x2 - x1) * tile, 1e-9),
+      spanY = math.max((y2 - y1) * tile, 1e-9);
+  // Capped so a tiny route (or a treadmill dot) doesn't zoom into a single building.
+  final zoom =
+      math.min(math.log(math.min(w / spanX, h / spanY)) / math.ln2, 17.0) -
+      (tilt > 0 ? 0.35 : 0);
+  // Shift the camera so the route centres in the padded box, not the whole screen.
+  final scale = tile * math.pow(2, zoom);
+  final cx = (x1 + x2) / 2 - (padding.left - padding.right) / 2 / scale;
+  final cy = (y1 + y2) / 2 - (padding.top - padding.bottom) / 2 / scale;
+  final lat =
+      math.atan(
+        (math.exp(math.pi * (1 - 2 * cy)) - math.exp(-math.pi * (1 - 2 * cy))) /
+            2,
+      ) *
+      180 /
+      math.pi;
+  return CameraPosition(
+    target: LatLng(lat, cx * 360 - 180),
+    zoom: zoom,
+    tilt: tilt,
+  );
 }

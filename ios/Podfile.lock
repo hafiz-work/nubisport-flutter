@@ -3,31 +3,78 @@ PODS:
   - flutter_inappwebview_ios (0.0.1):
     - Flutter
     - flutter_inappwebview_ios/Core (= 0.0.1)
-    - OrderedSet (~> 6.0.3)
+    - swift-collections (~> 1.1.1)
   - flutter_inappwebview_ios/Core (0.0.1):
     - Flutter
-    - OrderedSet (~> 6.0.3)
-  - OrderedSet (6.0.3)
+    - swift-collections (~> 1.1.1)
+  - flutter_secure_storage_darwin (10.0.0):
+    - Flutter
+    - FlutterMacOS
+  - InternalCollectionsUtilities (1.1.1)
+  - liquid_glass_widgets (0.0.1):
+    - Flutter
+  - MapLibre (6.28.0)
+  - maplibre_gl (0.27.0):
+    - Flutter
+    - MapLibre (= 6.28.0)
+  - share_plus (0.0.1):
+    - Flutter
+  - swift-collections (1.1.1):
+    - swift-collections/BitCollections (= 1.1.1)
+    - swift-collections/DequeModule (= 1.1.1)
+    - swift-collections/HashTreeCollections (= 1.1.1)
+    - swift-collections/HeapModule (= 1.1.1)
+    - swift-collections/OrderedCollections (= 1.1.1)
+  - swift-collections/BitCollections (1.1.1):
+    - InternalCollectionsUtilities (= 1.1.1)
+  - swift-collections/DequeModule (1.1.1):
+    - InternalCollectionsUtilities (= 1.1.1)
+  - swift-collections/HashTreeCollections (1.1.1):
+    - InternalCollectionsUtilities (= 1.1.1)
+  - swift-collections/HeapModule (1.1.1):
+    - InternalCollectionsUtilities (= 1.1.1)
+  - swift-collections/OrderedCollections (1.1.1):
+    - InternalCollectionsUtilities (= 1.1.1)
 
 DEPENDENCIES:
   - Flutter (from `Flutter`)
   - flutter_inappwebview_ios (from `.symlinks/plugins/flutter_inappwebview_ios/ios`)
+  - flutter_secure_storage_darwin (from `.symlinks/plugins/flutter_secure_storage_darwin/darwin`)
+  - liquid_glass_widgets (from `.symlinks/plugins/liquid_glass_widgets/ios`)
+  - maplibre_gl (from `.symlinks/plugins/maplibre_gl/ios`)
+  - share_plus (from `.symlinks/plugins/share_plus/ios`)
 
 SPEC REPOS:
   trunk:
-    - OrderedSet
+    - InternalCollectionsUtilities
+    - MapLibre
+    - swift-collections
 
 EXTERNAL SOURCES:
   Flutter:
     :path: Flutter
   flutter_inappwebview_ios:
     :path: ".symlinks/plugins/flutter_inappwebview_ios/ios"
+  flutter_secure_storage_darwin:
+    :path: ".symlinks/plugins/flutter_secure_storage_darwin/darwin"
+  liquid_glass_widgets:
+    :path: ".symlinks/plugins/liquid_glass_widgets/ios"
+  maplibre_gl:
+    :path: ".symlinks/plugins/maplibre_gl/ios"
+  share_plus:
+    :path: ".symlinks/plugins/share_plus/ios"
 
 SPEC CHECKSUMS:
   Flutter: 71a624a5bc0c04062bf19101d501e466baf2fb47
-  flutter_inappwebview_ios: b89ba3482b96fb25e00c967aae065701b66e9b99
-  OrderedSet: e539b66b644ff081c73a262d24ad552a69be3a94
+  flutter_inappwebview_ios: 9cde7869829d54b4110df350f3eedd192c5a4aea
+  flutter_secure_storage_darwin: 46e401699982ee74142909676535e0f6a7321e58
+  InternalCollectionsUtilities: af3f471602c4a67cbcb0bee0a80f6f55a33ae453
+  liquid_glass_widgets: b18ae3ebb4ddb3c58b0b8552566362fcc9791e22
+  MapLibre: 502506f9abd57330f11c19328217be3b121c3f13
+  maplibre_gl: ad68f3f1213b4dd48a9961adc6607681eea7c456
+  share_plus: eccd7beb7cea61271aeed1800e8ccb2b952c0c7f
+  swift-collections: ba248ecaf44ef500b27d5cf94d304218c89892ff
 
 PODFILE CHECKSUM: 24f68cb8a47df91ef679fbf760f2b685b3368794
 
-COCOAPODS: 1.16.2
+COCOAPODS: 1.17.0

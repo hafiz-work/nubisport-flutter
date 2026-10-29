@@ -6,10 +6,19 @@ import 'package:nubisport_flutter/features/auth/domain/models/app_user.dart';
 
 import 'support/fake_adapter.dart';
 
-const _me = AppUser(id: 7, name: 'Aina', email: 'aina@example.com', role: 'user', apps: {});
+const _me = AppUser(
+  id: 7,
+  name: 'Aina',
+  email: 'aina@example.com',
+  role: 'user',
+  apps: {},
+);
 
 ApiActivityRepository _repo(Map<String, (int, Object)> routes) =>
-    ApiActivityRepository(Dio()..httpClientAdapter = FakeAdapter(routes), currentUser: () => _me);
+    ApiActivityRepository(
+      Dio()..httpClientAdapter = FakeAdapter(routes),
+      currentUser: () => _me,
+    );
 
 void main() {
   const own = {
@@ -22,30 +31,44 @@ void main() {
     'elevationGainM': 42,
   };
 
-  test('own activities map to the signed-in user, newest first, untitled ones get a default', () async {
-    final items = await _repo({
-      'GET /me/apps/nubi/activities': (
-        200,
-        {
-          'success': true,
-          'data': {
-            'activities': [
-              own,
-              {...own, 'id': 13, 'startedAt': '2026-10-25T06:30:00Z', 'name': 'Subuh', 'sport': 'other'},
-            ],
+  test(
+    'own activities map to the signed-in user, newest first, untitled ones get a default',
+    () async {
+      final items = await _repo({
+        'GET /me/apps/nubi/activities': (
+          200,
+          {
+            'success': true,
+            'data': {
+              'activities': [
+                own,
+                {
+                  ...own,
+                  'id': 13,
+                  'startedAt': '2026-10-25T06:30:00Z',
+                  'name': 'Subuh',
+                  'sport': 'other',
+                },
+              ],
+            },
           },
-        },
-      ),
-    }).myActivities(userId: 7);
+        ),
+      }).myActivities(userId: 7);
 
-    expect(items.map((a) => a.id), ['13', '12']);
-    expect(items.last.title, 'Run');
-    expect(items.last.userName, 'Aina');
-    expect(items.last.distanceKm, 5.02);
-    expect(items.last.duration, const Duration(seconds: 1721));
-    expect(items.first.type, ActivityType.other);
-    expect(items.last.startedAt.isAtSameMomentAs(DateTime.utc(2026, 10, 21, 13, 12, 7)), isTrue);
-  });
+      expect(items.map((a) => a.id), ['13', '12']);
+      expect(items.last.title, 'Run');
+      expect(items.last.userName, 'Aina');
+      expect(items.last.distanceKm, 5.02);
+      expect(items.last.duration, const Duration(seconds: 1721));
+      expect(items.first.type, ActivityType.other);
+      expect(
+        items.last.startedAt.isAtSameMomentAs(
+          DateTime.utc(2026, 10, 21, 13, 12, 7),
+        ),
+        isTrue,
+      );
+    },
+  );
 
   test('feed items carry author, route preview and kudos', () async {
     final feed = await _repo({
@@ -94,23 +117,100 @@ void main() {
     expect(result, (count: 4, mine: true));
   });
 
-  test('detail falls back to own activity when not in the feed, null when nowhere', () async {
-    final repo = _repo({
-      'GET /me/apps/nubi/activities/12': (200, {'success': true, 'data': own}),
-    });
+  test(
+    'detail falls back to own activity when not in the feed, null when nowhere',
+    () async {
+      final repo = _repo({
+        'GET /me/apps/nubi/activities/12': (
+          200,
+          {'success': true, 'data': own},
+        ),
+      });
 
-    final detail = await repo.activity('12');
-    expect(detail?.id, '12');
-    expect(detail?.userName, 'Aina');
-    expect(detail?.route, isEmpty);
-    expect(await repo.activity('99'), isNull);
-    expect(await repo.activity('a1'), isNull);
+      final detail = await repo.activity('12');
+      expect(detail?.id, '12');
+      expect(detail?.userName, 'Aina');
+      expect(detail?.route, isEmpty);
+      expect(await repo.activity('99'), isNull);
+      expect(await repo.activity('a1'), isNull);
+    },
+  );
+
+  test(
+    'shared detail reads records: full route, km splits, chart samples, weather',
+    () async {
+      const semi = 2147483648 / 180; // degrees -> semicircles
+      final detail = await _repo({
+        'GET /me/apps/nubi/feed/12': (
+          200,
+          {
+            'success': true,
+            'data': {
+              ...own,
+              'elapsedS': 1800,
+              'avgHr': 150,
+              'author': {'name': 'Aina'},
+              'preview': [
+                [3.0, 101.0],
+              ],
+              'kudos': {'count': 0, 'mine': false},
+              'own': true,
+              'weather': {'temperatureC': 29.2, 'humidityPct': 76},
+            },
+          },
+        ),
+        // Raw body, no envelope; one point per 500 m, 4 min/km.
+        'GET /me/apps/nubi/feed/12/records': (
+          200,
+          {
+            'timestamp': [0, 120000, 240000, 360000, 480000],
+            'positionLat': [for (var i = 0; i < 5; i++) (3.0 + i / 100) * semi],
+            'positionLong': [for (var i = 0; i < 5; i++) 101.5 * semi],
+            'distance': [0, 500, 1000, 1500, 2000],
+            'enhancedAltitude': [50, 52, null, 56, 58],
+            'altitude': [0, 0, 54, 0, 0],
+            'speed': [4.17, 4.17, 4.17, 4.17, 4.17],
+          },
+        ),
+      }).activity('12');
+
+      expect(detail!.route.length, 5);
+      expect(detail.route.last.latitude, closeTo(3.04, 1e-6));
+      expect(detail.splits, [
+        const Duration(minutes: 4),
+        const Duration(minutes: 4),
+      ]);
+      expect(detail.samples.map((s) => s.altitudeM), [50, 52, 54, 56, 58]);
+      expect(detail.samples.last.distanceM, 2000);
+      expect(detail.elapsed, const Duration(seconds: 1800));
+      expect(detail.avgHr, 150);
+      expect(detail.weather?.temperatureC, 29.2);
+    },
+  );
+
+  test('records thinned to chart buckets keep the distance end', () {
+    final n = 3000;
+    final parsed = parseRecords({
+      'timestamp': [for (var i = 0; i < n; i++) i * 1000],
+      'distance': [for (var i = 0; i < n; i++) i * 3.0],
+      'speed': [for (var i = 0; i < n; i++) 3.0],
+    });
+    expect(parsed.samples.length, 300);
+    expect(parsed.samples.last.distanceM, (n - 1) * 3.0);
+    expect(parsed.samples.first.speedMs, 3.0);
+    expect(parsed.splits.length, 8);
   });
 
-  test('server errors other than 403/404 are not hidden as "not found"', () async {
-    final repo = _repo({
-      'GET /me/apps/nubi/feed/12': (500, {'success': false, 'error': 'Feed unavailable'}),
-    });
-    expect(repo.activity('12'), throwsA(isA<DioException>()));
-  });
+  test(
+    'server errors other than 403/404 are not hidden as "not found"',
+    () async {
+      final repo = _repo({
+        'GET /me/apps/nubi/feed/12': (
+          500,
+          {'success': false, 'error': 'Feed unavailable'},
+        ),
+      });
+      expect(repo.activity('12'), throwsA(isA<DioException>()));
+    },
+  );
 }

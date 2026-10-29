@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:dio/dio.dart';
 
 import '../../../auth/domain/models/app_user.dart';
@@ -6,8 +8,8 @@ import '../../domain/repositories/activity_repository.dart';
 
 /// hono-workers /me/apps/nubi/activities (own) and /me/apps/nubi/feed (members' shared runs).
 ///
-/// The API has no place name, calories, notes or splits, and only feed items carry a route
-/// preview - those fields stay at their empty defaults.
+/// The API has no place name, calories or notes. Route, splits and chart streams come from the
+/// owner's shared records (/feed/:id/records); private activities only have the summary.
 class ApiActivityRepository implements ActivityRepository {
   ApiActivityRepository(this._dio, {required this.currentUser});
   final Dio _dio;
@@ -23,7 +25,10 @@ class ApiActivityRepository implements ActivityRepository {
       queryParameters: {'from': '2000-01-01'},
     );
     final rows = (res.data?['data']?['activities'] as List?) ?? const [];
-    final items = [for (final row in rows.cast<Map<String, dynamic>>()) ownFromJson(row, currentUser())];
+    final items = [
+      for (final row in rows.cast<Map<String, dynamic>>())
+        ownFromJson(row, currentUser()),
+    ];
     return items..sort((a, b) => b.startedAt.compareTo(a.startedAt));
   }
 
@@ -32,7 +37,10 @@ class ApiActivityRepository implements ActivityRepository {
     // shortcut: first page only (server default limit), follow `next` when the feed page gets infinite scroll.
     final res = await _dio.get<Map<String, dynamic>>('/me/apps/nubi/feed');
     final rows = (res.data?['data']?['items'] as List?) ?? const [];
-    return [for (final row in rows.cast<Map<String, dynamic>>()) feedFromJson(row, currentUser())];
+    return [
+      for (final row in rows.cast<Map<String, dynamic>>())
+        feedFromJson(row, currentUser()),
+    ];
   }
 
   /// Feed detail first (it has the author and route); own private activities are only in /activities.
@@ -40,17 +48,31 @@ class ApiActivityRepository implements ActivityRepository {
   Future<Activity?> activity(String id) async {
     if (int.tryParse(id) == null) return null;
     final shared = await _getOrNull('/me/apps/nubi/feed/$id');
-    if (shared != null) return feedFromJson(shared, currentUser());
+    if (shared != null) {
+      return feedFromJson(
+        shared,
+        currentUser(),
+        records: await _recordsOrNull('/me/apps/nubi/feed/$id/records'),
+      );
+    }
     final own = await _getOrNull('/me/apps/nubi/activities/$id');
     return own == null ? null : ownFromJson(own, currentUser());
   }
 
   @override
-  Future<({int count, bool mine})> setKudos(String id, {required bool on}) async {
+  Future<({int count, bool mine})> setKudos(
+    String id, {
+    required bool on,
+  }) async {
     final path = '/me/apps/nubi/feed/$id/kudos';
-    final res = on ? await _dio.post<Map<String, dynamic>>(path) : await _dio.delete<Map<String, dynamic>>(path);
+    final res = on
+        ? await _dio.post<Map<String, dynamic>>(path)
+        : await _dio.delete<Map<String, dynamic>>(path);
     final data = res.data?['data'] as Map<String, dynamic>? ?? const {};
-    return (count: (data['count'] as num?)?.toInt() ?? 0, mine: data['mine'] == true);
+    return (
+      count: (data['count'] as num?)?.toInt() ?? 0,
+      mine: data['mine'] == true,
+    );
   }
 
   /// 403 too: a non-member may not read the feed, but can still open their own activity.
@@ -64,25 +86,141 @@ class ApiActivityRepository implements ActivityRepository {
       rethrow;
     }
   }
+
+  /// Raw JSON (no { success, data } envelope); 404 = shared before the copy existed.
+  Future<Map<String, dynamic>?> _recordsOrNull(String path) async {
+    try {
+      return (await _dio.get<Map<String, dynamic>>(path)).data;
+    } on DioException catch (e) {
+      final status = e.response?.statusCode;
+      if (status == 404 || status == 403) return null;
+      rethrow;
+    }
+  }
 }
 
-Activity ownFromJson(Map<String, dynamic> json, AppUser? me) =>
-    _activity(json, userId: me?.id ?? 0, userName: me?.name ?? '', route: const [], kudos: 0);
+Activity ownFromJson(Map<String, dynamic> json, AppUser? me) => _activity(
+  json,
+  userId: me?.id ?? 0,
+  userName: me?.name ?? '',
+  route: const [],
+  kudos: 0,
+);
 
-Activity feedFromJson(Map<String, dynamic> json, AppUser? me) {
+Activity feedFromJson(
+  Map<String, dynamic> json,
+  AppUser? me, {
+  Map<String, dynamic>? records,
+}) {
   final own = json['own'] == true;
+  final track = records == null ? null : parseRecords(records);
   return _activity(
     json,
     // The feed hides other authors' ids; only "is it mine" is known.
     userId: own ? me?.id ?? 0 : 0,
-    userName: (json['author'] as Map<String, dynamic>?)?['name'] as String? ?? '',
-    route: [
-      for (final p in (json['preview'] as List?) ?? const [])
-        GeoPoint((p[0] as num).toDouble(), (p[1] as num).toDouble()),
-    ],
-    kudos: ((json['kudos'] as Map<String, dynamic>?)?['count'] as num?)?.toInt() ?? 0,
+    userName:
+        (json['author'] as Map<String, dynamic>?)?['name'] as String? ?? '',
+    route: track != null && track.route.length > 1
+        ? track.route
+        : [
+            for (final p in (json['preview'] as List?) ?? const [])
+              GeoPoint((p[0] as num).toDouble(), (p[1] as num).toDouble()),
+          ],
+    kudos:
+        ((json['kudos'] as Map<String, dynamic>?)?['count'] as num?)?.toInt() ??
+        0,
     kudosed: (json['kudos'] as Map<String, dynamic>?)?['mine'] == true,
+    splits: track?.splits ?? const [],
+    samples: track?.samples ?? const [],
   );
+}
+
+/// Column records (FIT units: semicircles, m, m/s, epoch ms) -> map route, km splits, chart samples.
+({List<GeoPoint> route, List<Duration> splits, List<ActivitySample> samples})
+parseRecords(Map<String, dynamic> r) {
+  List<num?> col(String a, [String? b]) {
+    final first = (r[a] as List?)?.cast<num?>();
+    final second = b == null ? null : (r[b] as List?)?.cast<num?>();
+    if (first == null) return second ?? const [];
+    if (second == null) return first;
+    return [
+      for (var i = 0; i < first.length; i++)
+        first[i] ?? (i < second.length ? second[i] : null),
+    ];
+  }
+
+  final time = col('timestamp');
+  final lat = col('positionLat'), lon = col('positionLong');
+  final dist = col('distance'), alt = col('enhancedAltitude', 'altitude');
+  final speed = col('enhancedSpeed', 'speed'), hr = col('heartRate');
+  num? at(List<num?> c, int i) => i < c.length ? c[i] : null;
+
+  const degrees = 180 / 2147483648; // 2^31
+  final route = <GeoPoint>[];
+  final full = <ActivitySample>[];
+  final splits = <Duration>[];
+  var nextKm = 1000.0;
+  num? splitStart = at(time, 0);
+  for (var i = 0; i < time.length; i++) {
+    final la = at(lat, i), lo = at(lon, i);
+    if (la != null && lo != null) {
+      route.add(GeoPoint(la * degrees, lo * degrees));
+    }
+    final d = at(dist, i);
+    if (d == null) continue;
+    full.add(
+      ActivitySample(
+        distanceM: d.toDouble(),
+        altitudeM: at(alt, i)?.toDouble(),
+        speedMs: at(speed, i)?.toDouble(),
+        heartRate: at(hr, i)?.toDouble(),
+      ),
+    );
+    final t = at(time, i);
+    if (t != null && splitStart != null && d >= nextKm) {
+      splits.add(Duration(milliseconds: (t - splitStart).round()));
+      splitStart = t;
+      nextKm += 1000;
+    }
+  }
+  return (
+    route: _thin(route, 1500),
+    splits: splits,
+    samples: _buckets(full, 300),
+  );
+}
+
+/// Every n-th point (last kept) so the map gets a light polyline.
+List<T> _thin<T>(List<T> items, int max) {
+  if (items.length <= max) return items;
+  final step = items.length / max;
+  return [for (var i = 0; i < max; i++) items[(i * step).floor()], items.last];
+}
+
+/// Averages runs of samples into at most [max] points: smooths GPS speed noise and keeps charts fast.
+List<ActivitySample> _buckets(List<ActivitySample> items, int max) {
+  if (items.length <= max) return items;
+  final size = items.length / max;
+  double? avg(Iterable<double?> values) {
+    final known = values.whereType<double>();
+    return known.isEmpty ? null : known.reduce((a, b) => a + b) / known.length;
+  }
+
+  return [
+    for (var b = 0; b < max; b++)
+      () {
+        final chunk = items.sublist(
+          (b * size).floor(),
+          math.min(items.length, ((b + 1) * size).floor()),
+        );
+        return ActivitySample(
+          distanceM: chunk.last.distanceM,
+          altitudeM: avg(chunk.map((s) => s.altitudeM)),
+          speedMs: avg(chunk.map((s) => s.speedMs)),
+          heartRate: avg(chunk.map((s) => s.heartRate)),
+        );
+      }(),
+  ];
 }
 
 Activity _activity(
@@ -92,6 +230,8 @@ Activity _activity(
   required List<GeoPoint> route,
   required int kudos,
   bool kudosed = false,
+  List<Duration> splits = const [],
+  List<ActivitySample> samples = const [],
 }) {
   final type = switch (json['sport']) {
     'run' => ActivityType.run,
@@ -117,6 +257,21 @@ Activity _activity(
     elevationGainM: ((json['elevationGainM'] as num?) ?? 0).round(),
     kudos: kudos,
     kudosed: kudosed,
+    splits: splits,
+    samples: samples,
+    elapsed: Duration(seconds: ((json['elapsedS'] as num?) ?? 0).round()),
+    avgHr: (json['avgHr'] as num?)?.round(),
+    maxHr: (json['maxHr'] as num?)?.round(),
+    weather: switch (json['weather']) {
+      final Map<String, dynamic> w => ActivityWeather(
+        temperatureC: (w['temperatureC'] as num?)?.toDouble(),
+        feelsLikeC: (w['feelsLikeC'] as num?)?.toDouble(),
+        humidityPct: (w['humidityPct'] as num?)?.toDouble(),
+        windSpeedMs: (w['windSpeedMs'] as num?)?.toDouble(),
+        windDirectionDeg: (w['windDirectionDeg'] as num?)?.toDouble(),
+      ),
+      _ => null,
+    },
   );
 }
 

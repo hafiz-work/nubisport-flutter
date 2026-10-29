@@ -7,6 +7,36 @@ class GeoPoint {
   final double longitude;
 }
 
+/// Weather at the run's midpoint (MET Norway); any field can be missing.
+class ActivityWeather {
+  const ActivityWeather({
+    this.temperatureC,
+    this.feelsLikeC,
+    this.humidityPct,
+    this.windSpeedMs,
+    this.windDirectionDeg,
+  });
+  final double? temperatureC;
+  final double? feelsLikeC;
+  final double? humidityPct;
+  final double? windSpeedMs;
+  final double? windDirectionDeg;
+}
+
+/// One point of the recorded streams, keyed by distance for the detail charts.
+class ActivitySample {
+  const ActivitySample({
+    required this.distanceM,
+    this.altitudeM,
+    this.speedMs,
+    this.heartRate,
+  });
+  final double distanceM;
+  final double? altitudeM;
+  final double? speedMs;
+  final double? heartRate;
+}
+
 class Activity {
   const Activity({
     required this.id,
@@ -27,6 +57,11 @@ class Activity {
     this.kudosed = false,
     this.notes = '',
     this.splits = const [],
+    this.elapsed = Duration.zero,
+    this.avgHr,
+    this.maxHr,
+    this.weather,
+    this.samples = const [],
   });
 
   final String id;
@@ -54,6 +89,15 @@ class Activity {
 
   /// One split per kilometre (time for that km).
   final List<Duration> splits;
+
+  /// Wall-clock time including pauses; zero when unknown.
+  final Duration elapsed;
+  final int? avgHr;
+  final int? maxHr;
+  final ActivityWeather? weather;
+
+  /// Downsampled streams for the elevation/pace/heart-rate charts; empty when not shared.
+  final List<ActivitySample> samples;
 
   Duration get pace {
     if (distanceKm <= 0) return Duration.zero;
