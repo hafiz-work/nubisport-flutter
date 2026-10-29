@@ -159,7 +159,7 @@ void main() {
     final other = CloudPlan(
       key: 'pelan-10k:old',
       engine: 1,
-      data: const {},
+      data: const {'mula': '2026-11-02'},
       progress: const [],
       updatedAt: DateTime(2026, 10, 1),
     );
@@ -169,7 +169,7 @@ void main() {
     await tapText(t, 'Preview');
     await tapText(t, 'Save');
     expect(find.textContaining('Cloud full (1/1)'), findsOneWidget);
-    await t.tap(find.text('10K'));
+    await t.tap(find.text('10K · from 2026-11-02'));
     await t.pumpAndSettle();
     expect(repo.saves.single.replace, 'pelan-10k:old');
   });
@@ -286,5 +286,62 @@ void main() {
     expect((a.raceDate, a.kind, a.tahap), (false, PlanKind.fiveK, 'sifar'));
     a = await go('Distance Plans');
     expect((a.raceDate, a.kind, a.tahap), (false, null, null));
+  });
+
+  testWidgets('new plan with the key of a saved plan keeps and remaps its ticks', (t) async {
+    final same = CloudPlan(
+      key: 'pelan-5k:x',
+      engine: 1,
+      data: const {'tahap': '5k', 'bulan': '3', 'hari': '3', 'masa': '30', 'mula': '2026-10-01'},
+      progress: const ['1.0'],
+      updatedAt: DateTime(2026, 10, 1),
+    );
+    final repo = FakeRepo(items: [same]);
+    await open(t, repo, fiveK);
+    await t.enterText(find.byKey(const ValueKey('masa')), '30');
+    await tapText(t, 'Preview');
+    await tapText(t, 'Save');
+    expect(repo.lastPrevious?.progress, ['1.0']);
+    expect(repo.lastPrevious?.params['mula'], '2026-10-01');
+    expect(repo.saves.single.progress, ['remapped']);
+  });
+
+  testWidgets('update keeps params the form does not show', (t) async {
+    final repo = FakeRepo();
+    final existing = CloudPlan(
+      key: 'pelan-5k:3:5k:30:3',
+      engine: 1,
+      data: const {'tahap': '5k', 'bulan': '3', 'hari': '3', 'masa': '30', 'umur': '30', 'keadaan': 'konsisten'},
+      progress: const [],
+      updatedAt: DateTime(2026, 10, 1),
+    );
+    await open(t, repo, PlanFormArgs(kind: PlanKind.fiveK, existing: existing));
+    await tapText(t, '4 days');
+    await tapText(t, 'Preview');
+    expect(repo.builds.single, {
+      'tahap': '5k',
+      'bulan': '3',
+      'hari': '4',
+      'masa': '30',
+      'umur': '30',
+      'keadaan': 'konsisten',
+    });
+    await tapText(t, 'Save');
+    expect(repo.saves.single.data['umur'], '30');
+  });
+
+  testWidgets('update of a beginner distance plan starts as beginner', (t) async {
+    final repo = FakeRepo();
+    final existing = CloudPlan(
+      key: 'pelan-10k:10-0--3',
+      engine: 1,
+      data: const {'minggu': '10', 'hari': '3', 'jarak': '10k'},
+      progress: const [],
+      updatedAt: DateTime(2026, 10, 1),
+    );
+    await open(t, repo, PlanFormArgs(existing: existing));
+    expect(find.byKey(const ValueKey('masa')), findsNothing);
+    await tapText(t, 'Preview');
+    expect(repo.builds.single.containsKey('masa'), isFalse);
   });
 }

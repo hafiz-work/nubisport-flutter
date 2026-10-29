@@ -40,6 +40,8 @@ const _profileMasa = {
   PlanKind.half: 'masa10k',
   PlanKind.full: 'masa21k',
 };
+// Params this form sets; on update every other saved param (umur, keadaan, maf...) is kept.
+const _formKeys = {'hari', 'tahap', 'masa', 'pace', 'sasaran', 'lumba', 'mula', 'bulan', 'minggu'};
 const _raceKinds = {PlanKind.fiveK: '5K', PlanKind.tenK: '10K', PlanKind.half: '21K', PlanKind.full: '42K'};
 
 String _iso(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -101,6 +103,8 @@ class _PlanFormPageState extends ConsumerState<PlanFormPage> {
     }
     _weeks = int.tryParse(d['minggu'] ?? '') ?? _weeks;
     if (!_is5k) _weeks ??= _defaultWeeks[_kind];
+    // A distance plan saved without a current time was made as a beginner.
+    _pemula = _existing != null && !_is5k && d['masa'] == null;
     if (_existing == null) _loadProfile();
   }
 
@@ -147,7 +151,9 @@ class _PlanFormPageState extends ConsumerState<PlanFormPage> {
   /// Returns the params to send, or sets [_error].
   Map<String, String>? _params() {
     String? err;
-    final p = <String, String>{'hari': '$_hari'};
+    final p = {...?_existing?.data}
+      ..removeWhere((k, _) => _formKeys.contains(k))
+      ..['hari'] = '$_hari';
     if (_is5k) {
       p['tahap'] = _tahap;
       final masa = int.tryParse(_masa.text.trim());
@@ -238,15 +244,36 @@ class _PlanFormPageState extends ConsumerState<PlanFormPage> {
     final repo = ref.read(planRepositoryProvider);
     setState(() => _busy = true);
     try {
+      var built = b;
+      var previous = _existing;
+      if (previous == null) {
+        // Same key as a saved plan (the key ignores dates): keep and remap its ticks, like the web.
+        previous = (await repo.list()).items.where((i) => i.key == b.key).firstOrNull;
+        if (previous != null) {
+          built = await repo.build(
+            kind: _kind,
+            params: b.params,
+            key: b.key,
+            previous: (params: previous.data, progress: previous.progress),
+          );
+        }
+      }
+      final saved = CloudPlan(
+        key: built.key,
+        engine: built.engine,
+        data: built.params,
+        progress: built.progress ?? previous?.progress ?? const [],
+        updatedAt: DateTime.now(),
+      );
       await repo.save(
-        key: b.key,
-        engine: b.engine,
-        data: b.params,
-        progress: _existing == null ? const [] : (b.progress ?? _existing!.progress),
+        key: saved.key,
+        engine: saved.engine,
+        data: saved.data,
+        progress: saved.progress,
         replace: replace,
       );
       ref.invalidate(cloudPlansProvider);
-      if (mounted) Navigator.of(context).pop();
+      if (mounted) Navigator.of(context).pop(saved);
     } on PlanQuotaFull catch (q) {
       final items = (await repo.list()).items;
       if (!mounted) return;
@@ -258,7 +285,12 @@ class _PlanFormPageState extends ConsumerState<PlanFormPage> {
             for (final i in items)
               SimpleDialogOption(
                 onPressed: () => Navigator.of(c).pop(i.key),
-                child: Text(i.kind?.code.toUpperCase() ?? i.key),
+                child: Text(
+                  [
+                    i.kind?.code.toUpperCase() ?? i.key,
+                    if (i.data['mula'] case final m?) 'from $m' else if (i.data['minggu'] case final w?) '$w weeks',
+                  ].join(' · '),
+                ),
               ),
           ],
         ),

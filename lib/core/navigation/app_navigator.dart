@@ -21,6 +21,7 @@ abstract final class AppNavigator {
   static Future<void> planView(BuildContext context, CloudPlan plan) =>
       push<void>(context, AppRoutes.planView, arguments: plan);
 
-  static Future<void> planBuilder(BuildContext context, [PlanFormArgs args = const PlanFormArgs()]) =>
-      push<void>(context, AppRoutes.planBuilder, arguments: args);
+  /// Completes with the saved plan, or null when the form is left without saving.
+  static Future<CloudPlan?> planBuilder(BuildContext context, [PlanFormArgs args = const PlanFormArgs()]) =>
+      push<CloudPlan>(context, AppRoutes.planBuilder, arguments: args);
 }

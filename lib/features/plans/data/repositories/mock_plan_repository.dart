@@ -28,7 +28,7 @@ class MockPlanRepository implements PlanRepository {
       sessions: [
         for (var i = 0; i < 3; i++)
           PlanSession(
-            id: 'w$no-s$i',
+            id: '$no.$i',
             date: start == null ? null : DateTime(start.year, start.month, start.day + (no - 1) * 7 + i * 2),
             type: 'lari',
             minutes: 30,

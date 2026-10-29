@@ -27,6 +27,10 @@ abstract final class AppRouter {
   static Route<dynamic>? onGenerateRoute(RouteSettings settings) {
     final page = _page(settings);
     if (page == null) return null;
+    // The plan form pops with the saved CloudPlan (AppNavigator.planBuilder).
+    if (settings.name == AppRoutes.planBuilder) {
+      return MaterialPageRoute<CloudPlan>(settings: settings, builder: (_) => page);
+    }
     return MaterialPageRoute<void>(settings: settings, builder: (_) => page);
   }
 
