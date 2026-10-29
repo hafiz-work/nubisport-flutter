@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nubisport_flutter/features/activities/data/repositories/api_activity_repository.dart';
@@ -79,6 +81,57 @@ void main() {
       );
     },
   );
+
+  test(
+    'rows without a preview get one from the own .fit, saved with their own sharing',
+    () async {
+      final adapter = FakeAdapter({
+        'GET /me/apps/nubi/activities': (
+          200,
+          {
+            'success': true,
+            'data': {
+              'activities': [
+                {
+                  ...own,
+                  'visibility': 'private',
+                  'shareHr': false,
+                  'preview': null,
+                },
+              ],
+            },
+          },
+        ),
+        'GET /me/apps/nubi/activities/12/file': (
+          200,
+          File('test/fixtures/walk.fit').readAsBytesSync(),
+        ),
+        'PUT /me/apps/nubi/activities/12/visibility': (200, {'success': true}),
+      });
+      final items = await ApiActivityRepository(
+        Dio()..httpClientAdapter = adapter,
+        currentUser: () => _me,
+      ).myActivities(userId: 7);
+
+      expect(items.single.route, hasLength(150));
+      final saved =
+          adapter.bodies['PUT /me/apps/nubi/activities/12/visibility'] as Map;
+      expect(saved['visibility'], 'private');
+      expect(saved['shareHr'], false);
+      expect(saved['preview'], hasLength(150));
+    },
+  );
+
+  test('route preview: evenly spaced, ends kept, 5 decimals', () {
+    final route = [
+      for (var i = 0; i < 1000; i++) GeoPoint(3 + i * 0.0000123456, 101.5),
+    ];
+    final preview = routePreview(route);
+    expect(preview, hasLength(150));
+    expect(preview.first, [3.0, 101.5]);
+    expect(preview.last.first, closeTo(3 + 999 * 0.0000123456, 0.000005));
+    expect(routePreview(route.take(1).toList()), isEmpty);
+  });
 
   test('feed items carry author, route preview and kudos', () async {
     final feed = await _repo({
@@ -195,6 +248,19 @@ void main() {
       expect(detail.elapsed, const Duration(seconds: 1800));
       expect(detail.avgHr, 150);
       expect(detail.weather?.temperatureC, 29.2);
+    },
+  );
+
+  test(
+    'records without distance (most of a Strava file) reuse the last one instead of being dropped',
+    () {
+      final parsed = parseRecords({
+        'timestamp': [0, 1000, 2000, 3000],
+        'distance': [0, null, null, 8],
+        'heartRate': [null, 120, 121, null],
+      });
+      expect(parsed.samples.map((s) => s.distanceM), [0, 0, 0, 8]);
+      expect(parsed.samples.where((s) => s.heartRate != null), hasLength(2));
     },
   );
 

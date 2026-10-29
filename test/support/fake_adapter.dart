@@ -19,7 +19,9 @@ class FakeAdapter implements HttpClientAdapter {
   ) async {
     final key = '${options.method} ${options.path}';
     bodies[key] = options.data;
-    final (status, body) = routes[key] ?? (404, {'success': false, 'error': 'Not found'});
+    final (status, body) =
+        routes[key] ?? (404, {'success': false, 'error': 'Not found'});
+    if (body is Uint8List) return ResponseBody.fromBytes(body, status);
     return ResponseBody.fromString(
       jsonEncode(body),
       status,

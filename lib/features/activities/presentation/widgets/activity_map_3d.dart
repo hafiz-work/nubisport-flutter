@@ -172,12 +172,13 @@ class _ActivityMap3DState extends State<ActivityMap3D>
       _routeSource,
       GeojsonSourceProperties(data: _lineJson(_route), lineMetrics: true),
     );
+    // Wider than the feed tile's 5.5 px line: the 45° tilt thins the far half of the route.
     await map.addLineLayer(
       _routeSource,
       _routeCasingLayer,
       LineLayerProperties(
         lineGradient: _reveal('#FFFFFF', _progress),
-        lineWidth: 8.5,
+        lineWidth: 11,
         lineJoin: 'round',
         lineCap: 'round',
       ),
@@ -187,7 +188,7 @@ class _ActivityMap3DState extends State<ActivityMap3D>
       _routeLayer,
       LineLayerProperties(
         lineGradient: _reveal(_hex(AppColors.orange), _progress),
-        lineWidth: 5.5,
+        lineWidth: 7.5,
         lineJoin: 'round',
         lineCap: 'round',
       ),
@@ -236,7 +237,7 @@ class _ActivityMap3DState extends State<ActivityMap3D>
       _tipLayer,
       CircleLayerProperties(
         circleColor: _hex(AppColors.orange),
-        circleRadius: 7,
+        circleRadius: 8.5,
         circleStrokeColor: '#FFFFFF',
         circleStrokeWidth: 3,
       ),

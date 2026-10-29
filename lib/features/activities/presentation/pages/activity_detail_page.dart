@@ -469,6 +469,17 @@ class _ActivityDetailState extends ConsumerState<_ActivityDetail> {
           ],
         ),
       ),
+      // Same note as the web: someone else's activity whose .fit couldn't give records.
+      if (samples.isEmpty && !mine)
+        Padding(
+          padding: const EdgeInsets.only(top: 16),
+          child: Text(
+            'Simple route - splits, elevation and pace appear when the owner shares this activity again.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
       if (hasAltitude)
         _ChartSection(
           title: 'Elevation',

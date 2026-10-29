@@ -29,12 +29,48 @@ class ApiActivityRepository implements ActivityRepository {
       // preview=1: route shape + kudos per row, so own cards draw a map like the feed's.
       queryParameters: {'from': '2000-01-01', 'preview': '1'},
     );
-    final rows = (res.data?['data']?['activities'] as List?) ?? const [];
-    final items = [
-      for (final row in rows.cast<Map<String, dynamic>>())
-        ownFromJson(row, currentUser()),
-    ];
+    final rows = ((res.data?['data']?['activities'] as List?) ?? const [])
+        .cast<Map<String, dynamic>>();
+    // Rows from before previews existed (never shared) have no map: build theirs from our own .fit,
+    // like the web does on first share. The newest few wait so the top of the list draws; the rest
+    // are saved in the background and show on the next load.
+    // shortcut: activities without GPS retry once per app run; remember them on disk if that gets costly.
+    final missing = [
+      for (final row in rows)
+        if (row['preview'] == null && _previewTried.add('${row['id']}')) row,
+    ]..sort((a, b) => '${b['startedAt']}'.compareTo('${a['startedAt']}'));
+    await Future.wait(missing.take(4).map(_fillPreview));
+    unawaited(() async {
+      for (final row in missing.skip(4)) {
+        await _fillPreview(row);
+      }
+    }());
+    final items = [for (final row in rows) ownFromJson(row, currentUser())];
     return items..sort((a, b) => b.startedAt.compareTo(a.startedAt));
+  }
+
+  final _previewTried = <String>{};
+
+  /// Sets row['preview'] from the .fit and stores it, keeping the row's own sharing settings.
+  Future<void> _fillPreview(Map<String, dynamic> row) async {
+    final records = await _fitRecordsOrNull('${row['id']}');
+    final preview = records == null
+        ? const <List<double>>[]
+        : routePreview(parseRecords(records).route);
+    if (preview.length < 2) return;
+    row['preview'] = preview;
+    try {
+      await _dio.put<void>(
+        '/me/apps/nubi/activities/${row['id']}/visibility',
+        data: {
+          'visibility': row['visibility'],
+          'shareHr': row['shareHr'] == true,
+          'preview': preview,
+        },
+      );
+    } on DioException {
+      // Shown this time anyway; retried next app run.
+    }
   }
 
   @override
@@ -57,17 +93,10 @@ class ApiActivityRepository implements ActivityRepository {
       Map<String, dynamic>? records = await _recordsOrNull(
         '/me/apps/nubi/feed/$id/records',
       );
-      // Shared before the members' copy existed (or from another client): read our own .fit and
-      // send the copy, like the web's detail page does, so members get the charts too.
+      // The server builds missing copies from the owner's .fit; this only covers our own
+      // activity when that failed (e.g. too many records for a copy).
       if (records == null && shared['own'] == true) {
         records = await _fitRecordsOrNull(id);
-        if (records != null && (records['timestamp'] as List).length <= 50000) {
-          unawaited(
-            _dio
-                .put<void>('/me/apps/nubi/activities/$id/shared', data: records)
-                .then((_) {}, onError: (_) {}),
-          );
-        }
       }
       return feedFromJson(shared, currentUser(), records: records);
     }
@@ -209,13 +238,17 @@ parseRecords(Map<String, dynamic> r) {
   final splits = <Duration>[];
   var nextKm = 1000.0;
   num? splitStart = at(time, 0);
+  num? lastDistance;
   for (var i = 0; i < time.length; i++) {
     final la = at(lat, i), lo = at(lon, i);
     if (la != null && lo != null) {
       route.add(GeoPoint(la * degrees, lo * degrees));
     }
-    final d = at(dist, i);
+    // Strava's files put distance on only ~40% of records; the rest carry GPS, speed and most HR
+    // readings, so they reuse the last distance instead of being dropped.
+    final d = at(dist, i) ?? lastDistance;
     if (d == null) continue;
+    lastDistance = d;
     full.add(
       ActivitySample(
         distanceM: d.toDouble(),
@@ -236,6 +269,20 @@ parseRecords(Map<String, dynamic> r) {
     splits: splits,
     samples: _buckets(full, 300),
   );
+}
+
+/// The stored list/feed preview: [max] evenly spaced [lat, lon] at 5 decimals (the web's downsampledRoute).
+List<List<double>> routePreview(List<GeoPoint> route, [int max = 150]) {
+  if (route.length < 2) return const [];
+  final n = math.min(max, route.length);
+  double round5(double v) => (v * 1e5).round() / 1e5;
+  return [
+    for (var i = 0; i < n; i++)
+      [
+        round5(route[(i * (route.length - 1) / (n - 1)).round()].latitude),
+        round5(route[(i * (route.length - 1) / (n - 1)).round()].longitude),
+      ],
+  ];
 }
 
 /// Every n-th point (last kept) so the map gets a light polyline.
