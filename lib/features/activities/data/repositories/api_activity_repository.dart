@@ -1,9 +1,8 @@
 import 'dart:async';
-import 'dart:isolate';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../../auth/domain/models/app_user.dart';
 import '../../domain/models/activity.dart';
@@ -95,6 +94,7 @@ class ApiActivityRepository implements ActivityRepository {
       );
       // The server builds missing copies from the owner's .fit; this only covers our own
       // activity when that failed (e.g. too many records for a copy).
+      if (records == null) debugPrint('activity $id: no members\' copy (404)');
       if (records == null && shared['own'] == true) {
         records = await _fitRecordsOrNull(id);
       }
@@ -116,8 +116,15 @@ class ApiActivityRepository implements ActivityRepository {
       );
       final bytes = Uint8List.fromList(res.data ?? const []);
       // Off the UI isolate: a long activity is tens of thousands of records.
-      return await Isolate.run(() => fitRecordColumns(bytes));
-    } on DioException {
+      final columns = await compute(fitRecordColumns, bytes);
+      if (columns == null) {
+        debugPrint('activity $id: .fit has no records (${bytes.length} bytes)');
+      }
+      return columns;
+    } on DioException catch (e) {
+      debugPrint(
+        'activity $id: .fit not loaded (${e.response?.statusCode ?? e.type})',
+      );
       return null;
     }
   }

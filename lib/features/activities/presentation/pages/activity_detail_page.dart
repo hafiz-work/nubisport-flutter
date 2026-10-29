@@ -36,7 +36,7 @@ class ActivityDetailPage extends ConsumerWidget {
           padding: EdgeInsets.all(20),
           child: ActivityEmptyState(
             icon: Icons.cloud_off,
-            title: 'Couldn\'t share image.',
+            title: 'Couldn\'t load activity',
             message: 'Check your connection and try again.',
           ),
         ),

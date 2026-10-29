@@ -172,27 +172,8 @@ class _ActivityMap3DState extends State<ActivityMap3D>
       _routeSource,
       GeojsonSourceProperties(data: _lineJson(_route), lineMetrics: true),
     );
-    // Wider than the feed tile's 5.5 px line: the 45° tilt thins the far half of the route.
-    await map.addLineLayer(
-      _routeSource,
-      _routeCasingLayer,
-      LineLayerProperties(
-        lineGradient: _reveal('#FFFFFF', _progress),
-        lineWidth: 11,
-        lineJoin: 'round',
-        lineCap: 'round',
-      ),
-    );
-    await map.addLineLayer(
-      _routeSource,
-      _routeLayer,
-      LineLayerProperties(
-        lineGradient: _reveal(_hex(AppColors.orange), _progress),
-        lineWidth: 7.5,
-        lineJoin: 'round',
-        lineCap: 'round',
-      ),
-    );
+    await map.addLineLayer(_routeSource, _routeCasingLayer, _casing(_progress));
+    await map.addLineLayer(_routeSource, _routeLayer, _line(_progress));
     // Same orange arrows as the 2D map, revealed as the line passes them.
     await map.addImage(_arrowImage, await _arrowPng());
     await map.addGeoJsonSource(_arrowSource, _arrowJson(const []));
@@ -256,6 +237,23 @@ class _ActivityMap3DState extends State<ActivityMap3D>
     }
   }
 
+  // Every property each time: setLayerProperties sends unset ones as null, which resets them
+  // (a gradient-only update put the width back to MapLibre's 1 px default).
+  // Wider than the feed tile's 5.5 px line: the 45° tilt thins the far half of the route.
+  static LineLayerProperties _casing(double t) => LineLayerProperties(
+    lineGradient: _reveal('#FFFFFF', t),
+    lineWidth: 11,
+    lineJoin: 'round',
+    lineCap: 'round',
+  );
+
+  static LineLayerProperties _line(double t) => LineLayerProperties(
+    lineGradient: _reveal(_hex(AppColors.orange), t),
+    lineWidth: 7.5,
+    lineJoin: 'round',
+    lineCap: 'round',
+  );
+
   /// [color] up to [t] of the line, transparent after it.
   static List<Object> _reveal(String color, double t) => [
     'step',
@@ -269,14 +267,8 @@ class _ActivityMap3DState extends State<ActivityMap3D>
     final map = _map;
     if (map == null || !_styleReady) return;
     try {
-      await map.setLayerProperties(
-        _routeCasingLayer,
-        LineLayerProperties(lineGradient: _reveal('#FFFFFF', t)),
-      );
-      await map.setLayerProperties(
-        _routeLayer,
-        LineLayerProperties(lineGradient: _reveal(_hex(AppColors.orange), t)),
-      );
+      await map.setLayerProperties(_routeCasingLayer, _casing(t));
+      await map.setLayerProperties(_routeLayer, _line(t));
       await map.setGeoJsonSource(
         _tipSource,
         _pointJson(_hasRoute ? _pointAt(t) : _center),
