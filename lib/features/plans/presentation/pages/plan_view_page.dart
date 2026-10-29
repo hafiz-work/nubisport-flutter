@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -21,7 +22,8 @@ DateTime _malaysiaToday() {
 String _ymd(DateTime d) =>
     '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-String _detail(PlanSession s) => '${s.minutes} min${s.date == null ? '' : ' · ${s.date!.day}/${s.date!.month}'}';
+String _detail(PlanSession s) =>
+    '${s.minutes} min${s.date == null ? '' : ' · ${s.date!.day}/${s.date!.month}'}';
 
 class PlanViewPage extends ConsumerStatefulWidget {
   const PlanViewPage({super.key, required this.plan});
@@ -32,17 +34,32 @@ class PlanViewPage extends ConsumerStatefulWidget {
 }
 
 class _PlanViewPageState extends ConsumerState<PlanViewPage> {
-  late final PlanRepository _repo = ref.read(planRepositoryProvider);
-  late final ProviderContainer _container = ProviderScope.containerOf(context);
-  late final ScaffoldMessengerState _messenger = ScaffoldMessenger.of(context);
+  late final PlanRepository _repo;
+  late final ProviderContainer _container;
+  late ScaffoldMessengerState _messenger;
   late Set<String> _done = widget.plan.progress.toSet();
   late Set<String> _saved = widget.plan.progress.toSet();
   Timer? _timer;
   int? _engine;
   bool _saving = false;
+  bool _disposed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _repo = ref.read(planRepositoryProvider);
+    _container = ProviderScope.containerOf(context, listen: false);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _messenger = ScaffoldMessenger.of(context);
+  }
 
   @override
   void dispose() {
+    _disposed = true;
     if (_timer?.isActive ?? false) {
       _timer!.cancel();
       unawaited(_flush());
@@ -61,19 +78,34 @@ class _PlanViewPageState extends ConsumerState<PlanViewPage> {
     if (engine == null || _saving) return;
     final sending = {..._done};
     _saving = true;
+    var ok = false;
     try {
-      await _repo.save(key: widget.plan.key, engine: engine, data: widget.plan.data, progress: sending.toList());
+      await _repo.save(
+        key: widget.plan.key,
+        engine: engine,
+        data: widget.plan.data,
+        progress: sending.toList(),
+      );
       _saved = sending;
       _container.invalidate(cloudPlansProvider);
+      ok = true;
     } catch (_) {
-      if (mounted) setState(() => _done = {..._saved});
-      _messenger.showSnackBar(const SnackBar(content: Text("Couldn't save. Try again.")));
+      if (!_disposed) setState(() => _done = {..._saved});
+      _messenger.showSnackBar(
+        const SnackBar(content: Text("Couldn't save. Try again.")),
+      );
     } finally {
       _saving = false;
     }
+    // A tick made while this save was in flight was skipped; send it now.
+    if (ok && !setEquals(_done, _saved)) await _flush();
   }
 
-  Future<void> _onAction(_Action action, BuiltPlan built, ({String? plan, String? walkUntil}) active) async {
+  Future<void> _onAction(
+    _Action action,
+    BuiltPlan built,
+    ({String? plan, String? walkUntil}) active,
+  ) async {
     final plan = widget.plan;
     switch (action) {
       case _Action.update:
@@ -84,8 +116,14 @@ class _PlanViewPageState extends ConsumerState<PlanViewPage> {
           builder: (ctx) => AlertDialog(
             title: const Text('Delete this plan?'),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-              TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Delete'),
+              ),
             ],
           ),
         );
@@ -107,26 +145,34 @@ class _PlanViewPageState extends ConsumerState<PlanViewPage> {
         walkUntil = _ymd(today.add(const Duration(days: 13)));
       case _Action.extend7:
         final current = DateTime.tryParse(active.walkUntil ?? '');
-        final base = current != null && !current.isBefore(today) ? current : today.subtract(const Duration(days: 1));
+        final base = current != null && !current.isBefore(today)
+            ? current
+            : today.subtract(const Duration(days: 1));
         walkUntil = _ymd(DateTime.utc(base.year, base.month, base.day + 7));
       default:
         walkUntil = null; // set active / end walk mode
     }
-    await _repo.setActive(key: plan.key, engine: built.engine, walkUntil: walkUntil);
+    await _repo.setActive(
+      key: plan.key,
+      engine: built.engine,
+      walkUntil: walkUntil,
+    );
     _container.invalidate(activePlanProvider);
   }
 
   @override
   Widget build(BuildContext context) {
     final built = ref.watch(builtPlanProvider(widget.plan));
-    final active = ref.watch(activePlanProvider).value ?? (plan: null, walkUntil: null);
+    final active =
+        ref.watch(activePlanProvider).value ?? (plan: null, walkUntil: null);
     final b = built.value;
     _engine = b?.engine;
     final readOnly = b != null && b.engine != widget.plan.engine;
     final isActive = active.plan == widget.plan.key;
     final walking = isActive && active.walkUntil != null;
 
-    PopupMenuItem<_Action> item(_Action a, String label) => PopupMenuItem(value: a, child: Text(label));
+    PopupMenuItem<_Action> item(_Action a, String label) =>
+        PopupMenuItem(value: a, child: Text(label));
 
     return Scaffold(
       appBar: AppBar(
@@ -161,7 +207,10 @@ class _PlanViewPageState extends ConsumerState<PlanViewPage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text("Couldn't load this plan."),
-              TextButton(onPressed: () => ref.invalidate(builtPlanProvider(widget.plan)), child: const Text('Retry')),
+              TextButton(
+                onPressed: () => ref.invalidate(builtPlanProvider(widget.plan)),
+                child: const Text('Retry'),
+              ),
             ],
           ),
         ),
@@ -170,7 +219,9 @@ class _PlanViewPageState extends ConsumerState<PlanViewPage> {
             if (readOnly)
               const ListTile(
                 leading: Icon(Icons.info_outline),
-                title: Text('This plan was made with an older version. Open it on the web to continue.'),
+                title: Text(
+                  'This plan was made with an older version. Open it on the web to continue.',
+                ),
               ),
             for (final w in plan.weeks)
               ExpansionTile(
