@@ -1,18 +1,21 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/navigation/app_navigator.dart';
-import '../../../../core/navigation/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/widgets/family_bottom_sheet/family_modal_sheet.dart';
+import '../../domain/models/plan.dart';
+import '../controllers/plan_providers.dart';
+import 'plan_form_page.dart';
 
-class TrainingPlansPage extends StatelessWidget {
+class TrainingPlansPage extends ConsumerWidget {
   const TrainingPlansPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final plans = _plans;
     return Scaffold(
       appBar: AppBar(title: const Text('Training Plans')),
@@ -20,10 +23,11 @@ class TrainingPlansPage extends StatelessWidget {
         top: false,
         child: ListView.separated(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
-          itemCount: plans.length,
+          itemCount: plans.length + 1,
           separatorBuilder: (_, _) => const SizedBox(height: 14),
           itemBuilder: (context, index) {
-            final plan = plans[index];
+            if (index == 0) return const _MyPlans();
+            final plan = plans[index - 1];
             return _PlanCard(plan: plan, onTap: () => _openPlan(context, plan.kind));
           },
         ),
@@ -50,11 +54,7 @@ class TrainingPlansPage extends StatelessWidget {
     _showPlanSheet(
       context,
       content: const _RacePlanSheet(),
-      onContinue: () {
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(const SnackBar(content: Text('Race plan builder is coming soon.')));
-      },
+      onContinue: () => AppNavigator.planBuilder(context, const PlanFormArgs(raceDate: true)),
     );
   }
 
@@ -62,7 +62,7 @@ class TrainingPlansPage extends StatelessWidget {
     _showPlanSheet(
       context,
       content: const _Improve5kSheet(),
-      onContinue: () => AppNavigator.push<void>(context, AppRoutes.planBuilder),
+      onContinue: () => AppNavigator.planBuilder(context, const PlanFormArgs(kind: PlanKind.fiveK, tahap: '5k')),
     );
   }
 
@@ -70,7 +70,7 @@ class TrainingPlansPage extends StatelessWidget {
     _showPlanSheet(
       context,
       content: const _StartRunningSheet(),
-      onContinue: () => AppNavigator.push<void>(context, AppRoutes.planBuilder),
+      onContinue: () => AppNavigator.planBuilder(context, const PlanFormArgs(kind: PlanKind.fiveK, tahap: 'sifar')),
     );
   }
 
@@ -87,15 +87,7 @@ class TrainingPlansPage extends StatelessWidget {
   }
 
   void _showDistancePlans(BuildContext context) {
-    _showPlanSheet(
-      context,
-      content: const _DistancePlansSheet(),
-      onContinue: () {
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(const SnackBar(content: Text('Distance plan builder is coming soon.')));
-      },
-    );
+    _showPlanSheet(context, content: const _DistancePlansSheet(), onContinue: () => AppNavigator.planBuilder(context));
   }
 
   void _showPlanSheet(BuildContext context, {required Widget content, required VoidCallback onContinue}) {
@@ -192,7 +184,7 @@ const _plans = [
   _PlanDefinition(
     kind: _TrainingPlanKind.distance,
     title: 'Distance Plans',
-    description: 'Fully customize a plan for any distance from 5-50km.',
+    description: 'Fully customize a plan for any distance: 5K, 10K, 21K, 42K.',
     badge: '10K',
     icon: Icons.route_outlined,
     colors: [Color(0xFFDC2626), Color(0xFF991B1B)],
@@ -731,7 +723,10 @@ class _DistancePlansSheet extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 22),
-        const _Hero(title: 'Pick Your Distance.', subtitle: 'Fully customize a plan for any distance from 5km-50km.'),
+        const _Hero(
+          title: 'Pick Your Distance.',
+          subtitle: 'Fully customize a plan for any distance: 5K, 10K, 21K, 42K.',
+        ),
         const SizedBox(height: 24),
         Card(
           margin: EdgeInsets.zero,
@@ -744,7 +739,7 @@ class _DistancePlansSheet extends StatelessWidget {
                 Row(
                   children: [
                     Expanded(
-                      child: _ValueBlock(label: 'Distance', value: '5k - 50k'),
+                      child: _ValueBlock(label: 'Distance', value: '5K, 10K, 21K, 42K'),
                     ),
                     Expanded(
                       child: _ValueBlock(label: 'Length', value: '6+ weeks'),
@@ -1233,6 +1228,44 @@ class _WorkoutRow extends StatelessWidget {
         ),
         Text(item.detail, style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
       ],
+    );
+  }
+}
+
+class _MyPlans extends ConsumerWidget {
+  const _MyPlans();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final plans = ref.watch(cloudPlansProvider);
+    final activeKey = ref.watch(activePlanProvider).value?.plan;
+    final theme = Theme.of(context);
+    return plans.when(
+      loading: () => const Center(
+        child: Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator()),
+      ),
+      error: (_, _) => Row(
+        children: [
+          const Expanded(child: Text("Couldn't load your plans.")),
+          TextButton(onPressed: () => ref.invalidate(cloudPlansProvider), child: const Text('Retry')),
+        ],
+      ),
+      data: (data) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('My plans (${data.items.length}/${data.limit})', style: theme.textTheme.titleMedium),
+          if (data.items.isEmpty)
+            const Padding(padding: EdgeInsets.only(top: 8), child: Text('No plans yet - pick one below.')),
+          for (final plan in data.items)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(plan.kind?.code.toUpperCase() ?? plan.key),
+              subtitle: Text('${plan.progress.length} sessions done'),
+              trailing: plan.key == activeKey ? const Chip(label: Text('Active')) : null,
+              onTap: () => AppNavigator.planView(context, plan),
+            ),
+        ],
+      ),
     );
   }
 }

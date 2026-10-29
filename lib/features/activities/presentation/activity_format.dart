@@ -36,6 +36,7 @@ String activityLabel(ActivityType type) => switch (type) {
   ActivityType.walk => 'Jalan kaki',
   ActivityType.hike => 'Hike',
   ActivityType.ride => 'Kayuh',
+  ActivityType.other => 'Activity',
 };
 
 IconData activityIcon(ActivityType type) => switch (type) {
@@ -43,4 +44,5 @@ IconData activityIcon(ActivityType type) => switch (type) {
   ActivityType.walk => Icons.directions_walk,
   ActivityType.hike => Icons.hiking,
   ActivityType.ride => Icons.directions_bike,
+  ActivityType.other => Icons.fitness_center,
 };

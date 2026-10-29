@@ -10,6 +10,7 @@ abstract final class AppRoutes {
 
   static const trainingPlans = '/training-plans';
   static const planBuilder = '/training-plans/builder';
+  static const planView = '/training-plans/view';
 
   static const changePassword = '/settings/change-password';
   static const changeEmail = '/settings/change-email';

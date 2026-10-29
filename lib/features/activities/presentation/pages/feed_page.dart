@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/navigation/app_navigator.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
+import '../../data/repositories/activity_repository_provider.dart';
+import '../../domain/models/activity.dart';
 import '../controllers/activity_providers.dart';
 import '../widgets/activity_card.dart';
 import '../widgets/activity_empty_state.dart';
@@ -18,13 +20,27 @@ class FeedPage extends ConsumerStatefulWidget {
 }
 
 class _FeedPageState extends ConsumerState<FeedPage> {
-  /// Kudos are local for now; the API write lands with the real repository.
-  final Set<String> _kudosed = {};
+  /// Kudos toggled on this page, on top of what the feed loaded.
+  final Map<String, ({int count, bool mine})> _kudos = {};
 
-  void _toggleKudos(String id) {
-    setState(() {
-      if (!_kudosed.remove(id)) _kudosed.add(id);
-    });
+  ({int count, bool mine}) _kudosOf(Activity activity) =>
+      _kudos[activity.id] ?? (count: activity.kudos, mine: activity.kudosed);
+
+  /// Optimistic: flip now, then keep the server's answer, or roll back if the call fails.
+  Future<void> _toggleKudos(Activity activity) async {
+    final before = _kudosOf(activity);
+    final on = !before.mine;
+    setState(() => _kudos[activity.id] = (count: before.count + (on ? 1 : -1), mine: on));
+    try {
+      final after = await ref.read(activityRepositoryProvider).setKudos(activity.id, on: on);
+      if (mounted) setState(() => _kudos[activity.id] = after);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _kudos[activity.id] = before);
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text('Couldn\'t send kudos. Try again.')));
+    }
   }
 
   void _open(String id) {
@@ -34,6 +50,7 @@ class _FeedPageState extends ConsumerState<FeedPage> {
   @override
   Widget build(BuildContext context) {
     final feed = ref.watch(activityFeedProvider);
+    final myId = ref.watch(authControllerProvider).value?.id;
     return Scaffold(
       appBar: AppBar(title: const Text('Feed')),
       body: RefreshIndicator.adaptive(
@@ -76,13 +93,11 @@ class _FeedPageState extends ConsumerState<FeedPage> {
                     return ActivityCard(
                       activity: activity,
                       showUser: true,
-                      kudosed: _kudosed.contains(activity.id),
-                      onKudos: () => _toggleKudos(activity.id),
-                      onShare: () => showActivityShareSheet(
-                        context,
-                        activity,
-                        isMine: ref.read(authControllerProvider).value?.id == activity.userId,
-                      ),
+                      kudosed: _kudosOf(activity).mine,
+                      kudosCount: _kudosOf(activity).count,
+                      // The API allows no kudos on your own activity.
+                      onKudos: activity.userId != 0 && activity.userId == myId ? null : () => _toggleKudos(activity),
+                      onShare: () => showActivityShareSheet(context, activity, isMine: myId == activity.userId),
                       onTap: () => _open(activity.id),
                     );
                   },

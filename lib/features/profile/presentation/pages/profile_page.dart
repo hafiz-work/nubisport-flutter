@@ -29,7 +29,6 @@ class ProfilePage extends ConsumerStatefulWidget {
 class _ProfilePageState extends ConsumerState<ProfilePage> with SingleTickerProviderStateMixin {
   late final TabController _tabs;
   int _tabIndex = 0;
-  final Set<String> _kudosed = {};
   ActivityType? _sport;
 
   AppUser get user => widget.user;
@@ -62,12 +61,6 @@ class _ProfilePageState extends ConsumerState<ProfilePage> with SingleTickerProv
     _tabs.removeListener(_onTabChanged);
     _tabs.dispose();
     super.dispose();
-  }
-
-  void _toggleKudos(String id) {
-    setState(() {
-      if (!_kudosed.remove(id)) _kudosed.add(id);
-    });
   }
 
   Future<void> _shareProfile() async {
@@ -392,8 +385,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> with SingleTickerProv
         ActivityCard(
           activity: activity,
           showUser: true,
-          kudosed: _kudosed.contains(activity.id),
-          onKudos: () => _toggleKudos(activity.id),
+          // Own activities: the API allows no kudos on them.
+          kudosed: activity.kudosed,
           onShare: () => showActivityShareSheet(context, activity, isMine: true),
           onTap: () => AppNavigator.activityDetail(context, activity.id),
         ),

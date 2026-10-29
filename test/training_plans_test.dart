@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nubisport_flutter/features/plans/data/repositories/mock_plan_repository.dart';
+import 'package:nubisport_flutter/features/plans/data/repositories/plan_repository_provider.dart';
 import 'package:nubisport_flutter/core/theme/app_theme.dart';
 import 'package:nubisport_flutter/features/plans/presentation/pages/training_plans_page.dart';
 
@@ -10,7 +13,12 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(MaterialApp(theme: AppTheme.dark, home: const TrainingPlansPage()));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [planRepositoryProvider.overrideWithValue(MockPlanRepository())],
+        child: MaterialApp(theme: AppTheme.dark, home: const TrainingPlansPage()),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('Training Plans'), findsOneWidget);
@@ -46,11 +54,7 @@ void main() {
     await tester.tap(find.byIcon(Icons.close));
     await tester.pumpAndSettle();
 
-    await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('explore-Start running')),
-      250,
-      scrollable: scrollable,
-    );
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('explore-Start running')), 250, scrollable: scrollable);
     await tester.tap(find.byKey(const ValueKey('explore-Start running')));
     await tester.pumpAndSettle();
 
@@ -80,16 +84,12 @@ void main() {
     await tester.tap(find.byIcon(Icons.close));
     await tester.pumpAndSettle();
 
-    await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('explore-Distance Plans')),
-      250,
-      scrollable: scrollable,
-    );
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('explore-Distance Plans')), 250, scrollable: scrollable);
     await tester.tap(find.byKey(const ValueKey('explore-Distance Plans')));
     await tester.pumpAndSettle();
 
     expect(find.text('Pick Your Distance.'), findsOneWidget);
-    expect(find.text('5k - 50k'), findsOneWidget);
+    expect(find.text('5K, 10K, 21K, 42K'), findsOneWidget);
     expect(find.text('6+ weeks'), findsOneWidget);
     expect(find.text('Example week'), findsOneWidget);
     expect(find.text('Weekly total'), findsOneWidget);
