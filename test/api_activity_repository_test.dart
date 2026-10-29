@@ -1,41 +1,15 @@
-import 'dart:convert';
-import 'dart:typed_data';
-
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nubisport_flutter/features/activities/data/repositories/api_activity_repository.dart';
 import 'package:nubisport_flutter/features/activities/domain/models/activity.dart';
 import 'package:nubisport_flutter/features/auth/domain/models/app_user.dart';
 
-/// Answers by path: (status, JSON body).
-class _FakeAdapter implements HttpClientAdapter {
-  _FakeAdapter(this.routes);
-  final Map<String, (int, Object)> routes;
-
-  @override
-  Future<ResponseBody> fetch(
-    RequestOptions options,
-    Stream<Uint8List>? requestStream,
-    Future<void>? cancelFuture,
-  ) async {
-    final (status, body) = routes[options.path] ?? (404, {'success': false, 'error': 'Not found'});
-    return ResponseBody.fromString(
-      jsonEncode(body),
-      status,
-      headers: {
-        Headers.contentTypeHeader: [Headers.jsonContentType],
-      },
-    );
-  }
-
-  @override
-  void close({bool force = false}) {}
-}
+import 'support/fake_adapter.dart';
 
 const _me = AppUser(id: 7, name: 'Aina', email: 'aina@example.com', role: 'user', apps: {});
 
 ApiActivityRepository _repo(Map<String, (int, Object)> routes) =>
-    ApiActivityRepository(Dio()..httpClientAdapter = _FakeAdapter(routes), currentUser: () => _me);
+    ApiActivityRepository(Dio()..httpClientAdapter = FakeAdapter(routes), currentUser: () => _me);
 
 void main() {
   const own = {
@@ -50,7 +24,7 @@ void main() {
 
   test('own activities map to the signed-in user, newest first, untitled ones get a default', () async {
     final items = await _repo({
-      '/me/apps/nubi/activities': (
+      'GET /me/apps/nubi/activities': (
         200,
         {
           'success': true,
@@ -75,7 +49,7 @@ void main() {
 
   test('feed items carry author, route preview and kudos', () async {
     final feed = await _repo({
-      '/me/apps/nubi/feed': (
+      'GET /me/apps/nubi/feed': (
         200,
         {
           'success': true,
@@ -108,7 +82,7 @@ void main() {
 
   test('kudos returns the server count and state', () async {
     final result = await _repo({
-      '/me/apps/nubi/feed/12/kudos': (
+      'POST /me/apps/nubi/feed/12/kudos': (
         200,
         {
           'success': true,
@@ -122,7 +96,7 @@ void main() {
 
   test('detail falls back to own activity when not in the feed, null when nowhere', () async {
     final repo = _repo({
-      '/me/apps/nubi/activities/12': (200, {'success': true, 'data': own}),
+      'GET /me/apps/nubi/activities/12': (200, {'success': true, 'data': own}),
     });
 
     final detail = await repo.activity('12');
@@ -135,7 +109,7 @@ void main() {
 
   test('server errors other than 403/404 are not hidden as "not found"', () async {
     final repo = _repo({
-      '/me/apps/nubi/feed/12': (500, {'success': false, 'error': 'Feed unavailable'}),
+      'GET /me/apps/nubi/feed/12': (500, {'success': false, 'error': 'Feed unavailable'}),
     });
     expect(repo.activity('12'), throwsA(isA<DioException>()));
   });
