@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../../../core/network/session_cookies.dart';
 import '../../../../core/storage/token_storage.dart';
@@ -14,7 +15,12 @@ abstract interface class AuthRemoteDataSource {
   });
 
   /// No tokens are returned: the account needs email verification before login.
-  Future<void> register({required String name, required String email, required String password, String? captchaToken});
+  Future<void> register({
+    required String name,
+    required String email,
+    required String password,
+    String? captchaToken,
+  });
   Future<void> forgotPassword({required String email, String? captchaToken});
   Future<AppUser> updateProfile({
     required String name,
@@ -23,7 +29,10 @@ abstract interface class AuthRemoteDataSource {
     required String bio,
     required bool profilePublic,
   });
-  Future<void> changePassword({required String currentPassword, required String newPassword});
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  });
   Future<AppUser> me();
   Future<void> logout();
 }
@@ -41,11 +50,21 @@ class DioAuthRemoteDataSource implements AuthRemoteDataSource {
     try {
       final res = await _dio.post<Map<String, dynamic>>(
         '/auth/login',
-        data: {'email': email, 'password': password, 'app': 'nubi', 'captchaToken': ?captchaToken},
+        data: {
+          'email': email,
+          'password': password,
+          'app': 'nubi',
+          'captchaToken': ?captchaToken,
+        },
       );
       final tokens = tokensFromSetCookie(res.headers);
       if (tokens == null) throw const AuthFailure(AuthFailureReason.unknown);
-      return (tokens: tokens, user: userFromJson(res.data?['data']?['user'] as Map<String, dynamic>? ?? const {}));
+      return (
+        tokens: tokens,
+        user: userFromJson(
+          res.data?['data']?['user'] as Map<String, dynamic>? ?? const {},
+        ),
+      );
     } on DioException catch (e) {
       throw AuthFailure(loginFailureReason(e));
     }
@@ -61,7 +80,13 @@ class DioAuthRemoteDataSource implements AuthRemoteDataSource {
     try {
       await _dio.post<Map<String, dynamic>>(
         '/auth/register',
-        data: {'name': name, 'email': email, 'password': password, 'app': 'nubi', 'captchaToken': ?captchaToken},
+        data: {
+          'name': name,
+          'email': email,
+          'password': password,
+          'app': 'nubi',
+          'captchaToken': ?captchaToken,
+        },
       );
     } on DioException catch (e) {
       throw AuthFailure(registerFailureReason(e));
@@ -69,7 +94,10 @@ class DioAuthRemoteDataSource implements AuthRemoteDataSource {
   }
 
   @override
-  Future<void> forgotPassword({required String email, String? captchaToken}) async {
+  Future<void> forgotPassword({
+    required String email,
+    String? captchaToken,
+  }) async {
     try {
       await _dio.post<Map<String, dynamic>>(
         '/auth/forgot-password',
@@ -107,7 +135,10 @@ class DioAuthRemoteDataSource implements AuthRemoteDataSource {
   }
 
   @override
-  Future<void> changePassword({required String currentPassword, required String newPassword}) async {
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
     try {
       await _dio.put<Map<String, dynamic>>(
         '/me/password',
@@ -138,7 +169,8 @@ AppUser userFromJson(Map<String, dynamic> json) {
     email: json['email'] as String? ?? '',
     role: (json['role'] as String? ?? 'user').toLowerCase(),
     apps: {
-      for (final e in (json['apps'] as Map<String, dynamic>? ?? const {}).entries)
+      for (final e
+          in (json['apps'] as Map<String, dynamic>? ?? const {}).entries)
         if (e.value is String) e.key: e.value as String,
     },
     username: json['username'] as String? ?? '',
@@ -148,10 +180,19 @@ AppUser userFromJson(Map<String, dynamic> json) {
   );
 }
 
+/// No answer from the server. Logged (logcat shows it in release too) because the UI only
+/// says "No connection", and the cause - DNS, TLS, timeout - is what fixes it.
+AuthFailureReason _network(DioException e) {
+  debugPrint(
+    'auth: no response from ${e.requestOptions.uri}: ${e.type} ${e.error ?? e.message}',
+  );
+  return AuthFailureReason.network;
+}
+
 /// Same reading of the API's answers as the web login page (nubisport-astro src/pages/login.astro).
 AuthFailureReason loginFailureReason(DioException e) {
   final status = e.response?.statusCode;
-  if (status == null) return AuthFailureReason.network;
+  if (status == null) return _network(e);
   final body = e.response?.data;
   final code = body is Map ? body['code'] : null;
   final error = body is Map ? '${body['error'] ?? ''}'.toLowerCase() : '';
@@ -172,7 +213,7 @@ AuthFailureReason loginFailureReason(DioException e) {
 /// Same reading as the web register form: a 400 carries the offending `field`.
 AuthFailureReason registerFailureReason(DioException e) {
   final status = e.response?.statusCode;
-  if (status == null) return AuthFailureReason.network;
+  if (status == null) return _network(e);
   final body = e.response?.data;
   final field = body is Map ? body['field'] : null;
   final code = body is Map ? body['code'] : null;
@@ -196,7 +237,7 @@ AuthFailureReason registerFailureReason(DioException e) {
 /// Same reading as the web forgot-password form: a captcha failure, a 400 (bad email) and 429 are special.
 AuthFailureReason forgotPasswordFailureReason(DioException e) {
   final status = e.response?.statusCode;
-  if (status == null) return AuthFailureReason.network;
+  if (status == null) return _network(e);
   final body = e.response?.data;
   final error = body is Map ? '${body['error'] ?? ''}'.toLowerCase() : '';
   if (error.contains('captcha')) return AuthFailureReason.captcha;
@@ -208,14 +249,16 @@ AuthFailureReason forgotPasswordFailureReason(DioException e) {
 /// Web profile edit errors: code `username_taken` / `username_required`, or a bad field.
 AuthFailureReason profileFailureReason(DioException e) {
   final status = e.response?.statusCode;
-  if (status == null) return AuthFailureReason.network;
+  if (status == null) return _network(e);
   final body = e.response?.data;
   final code = body is Map ? body['code'] : null;
   final field = body is Map ? body['field'] : null;
   if (code == 'username_taken') return AuthFailureReason.usernameTaken;
   if (code == 'username_required') return AuthFailureReason.usernameRequired;
   if (field == 'username') return AuthFailureReason.invalidUsername;
-  if (field == 'name' || field == 'displayName') return AuthFailureReason.invalidName;
+  if (field == 'name' || field == 'displayName') {
+    return AuthFailureReason.invalidName;
+  }
   if (status == 429) return AuthFailureReason.rateLimited;
   return AuthFailureReason.unknown;
 }
@@ -224,10 +267,12 @@ AuthFailureReason profileFailureReason(DioException e) {
 /// 400s mean the new password failed the rules.
 AuthFailureReason passwordFailureReason(DioException e) {
   final status = e.response?.statusCode;
-  if (status == null) return AuthFailureReason.network;
+  if (status == null) return _network(e);
   final body = e.response?.data;
   final error = body is Map ? '${body['error'] ?? ''}'.toLowerCase() : '';
-  if (status == 401 || error.contains('current password')) return AuthFailureReason.wrongPassword;
+  if (status == 401 || error.contains('current password')) {
+    return AuthFailureReason.wrongPassword;
+  }
   if (status == 400) return AuthFailureReason.weakPassword;
   if (status == 429) return AuthFailureReason.rateLimited;
   return AuthFailureReason.unknown;
