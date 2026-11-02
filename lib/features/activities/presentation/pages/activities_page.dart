@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/navigation/app_navigator.dart';
@@ -33,32 +34,37 @@ class ActivitiesPage extends ConsumerWidget {
             children: const [
               ActivityEmptyState(
                 icon: Icons.cloud_off,
-                title: 'Couldn\'t share image.',
+                title: 'Couldn\'t load activities',
                 message: 'Check your connection and try again.',
               ),
             ],
           ),
-          data: (items) => ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 140),
-            children: [
-              if (items.isEmpty)
-                const ActivityEmptyState(
-                  icon: Icons.directions_run,
-                  title: 'No activities yet',
-                  message: 'Your runs and workouts will appear here.',
+          data: (items) => items.isEmpty
+              ? ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 140),
+                  children: const [
+                    ActivityEmptyState(
+                      icon: Icons.directions_run,
+                      title: 'No activities yet',
+                      message: 'Your runs and workouts will appear here.',
+                    ),
+                  ],
                 )
-              else
-                for (final activity in items)
-                  Padding(
+              // Built lazily like the feed: a map per card all at once made scrolling stutter.
+              : ListView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 140),
+                  itemCount: items.length,
+                  scrollCacheExtent: const ScrollCacheExtent.pixels(800),
+                  itemBuilder: (context, index) => Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: ActivityCard(
-                      activity: activity,
-                      onTap: () => _open(context, activity.id),
+                      activity: items[index],
+                      onTap: () => _open(context, items[index].id),
                     ),
                   ),
-            ],
-          ),
+                ),
         ),
       ),
     );
