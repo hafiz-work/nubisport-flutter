@@ -17,6 +17,8 @@ import '../widgets/activity_empty_state.dart';
 import '../widgets/activity_map.dart';
 import '../widgets/activity_map_3d.dart';
 import '../widgets/activity_share_sheet.dart';
+import '../widgets/activity_visibility_sheet.dart';
+import '../../data/repositories/activity_repository_provider.dart';
 import '../widgets/activity_stream_chart.dart';
 import '../widgets/kudos_bar.dart';
 import '../widgets/map_style_sheet.dart';
@@ -109,6 +111,21 @@ class _ActivityDetailState extends ConsumerState<_ActivityDetail> {
   /// Snap size the camera was last fitted for, and the debounce that waits for the sheet to rest.
   double _settledAt = _initialSheet;
   Timer? _settleTimer;
+  Future<void> _editVisibility(Activity activity) =>
+      showActivityVisibilitySheet(
+        context,
+        activity,
+        onSave: (visibility, shareHr) async {
+          await ref
+              .read(activityRepositoryProvider)
+              .setVisibility(activity, visibility, shareHr: shareHr);
+          ref
+            ..invalidate(activityDetailProvider(activity.id))
+            ..invalidate(myActivitiesProvider)
+            ..invalidate(activityFeedProvider);
+        },
+      );
+
   Future<void> _toggleKudos() async {
     HapticFeedback.lightImpact();
     if (await ref.read(kudosProvider(widget.activity).notifier).toggle()) {
@@ -454,6 +471,24 @@ class _ActivityDetailState extends ConsumerState<_ActivityDetail> {
                   showActivityShareSheet(context, activity, isMine: mine),
             ),
             const Divider(height: 24),
+            if (activity.visibility case final visibility? when mine) ...[
+              Material(
+                type: MaterialType.transparency,
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(switch (visibility) {
+                    ActivityVisibility.private => Icons.lock_outline,
+                    ActivityVisibility.members => Icons.group_outlined,
+                    ActivityVisibility.public => Icons.public,
+                  }),
+                  title: const Text('Visibility'),
+                  subtitle: Text(visibilityLabel(visibility)),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _editVisibility(activity),
+                ),
+              ),
+              const Divider(height: 24),
+            ],
           ],
         ),
       ),

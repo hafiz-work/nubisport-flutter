@@ -13,4 +13,11 @@ abstract interface class ActivityRepository {
 
   /// Give or take back kudos on someone else's shared activity; the server's new state.
   Future<({int count, bool mine})> setKudos(String id, {required bool on});
+
+  /// Who can see the caller's own activity. Private also removes its kudos (server rule).
+  Future<void> setVisibility(
+    Activity activity,
+    ActivityVisibility visibility, {
+    required bool shareHr,
+  });
 }

@@ -2398,11 +2398,58 @@ class MockActivityRepository implements ActivityRepository {
     return (count: base + (on ? 1 : 0), mine: on);
   }
 
+  /// Demo sharing settings by activity id (seeded activities start as members).
+  final Map<String, (ActivityVisibility, bool)> _sharing = {};
+
+  @override
+  Future<void> setVisibility(
+    Activity activity,
+    ActivityVisibility visibility, {
+    required bool shareHr,
+  }) async {
+    await _wait();
+    _sharing[activity.id] = (
+      visibility,
+      visibility != ActivityVisibility.private && shareHr,
+    );
+  }
+
   @override
   Future<Activity?> activity(String id, {AppUser? viewer}) async {
     await _wait();
-    for (final activity in _activities) {
-      if (activity.id == id) return activity;
+    for (final a in _activities) {
+      if (a.id != id) continue;
+      if (viewer == null || a.userId != viewer.id) return a;
+      final (visibility, shareHr) =
+          _sharing[id] ?? (ActivityVisibility.members, false);
+      return Activity(
+        id: a.id,
+        userId: a.userId,
+        userName: a.userName,
+        title: a.title,
+        type: a.type,
+        startedAt: a.startedAt,
+        distanceKm: a.distanceKm,
+        duration: a.duration,
+        location: a.location,
+        latitude: a.latitude,
+        longitude: a.longitude,
+        route: a.route,
+        elevationGainM: a.elevationGainM,
+        calories: a.calories,
+        kudos: a.kudos,
+        kudosed: a.kudosed,
+        notes: a.notes,
+        splits: a.splits,
+        elapsed: a.elapsed,
+        avgHr: a.avgHr,
+        maxHr: a.maxHr,
+        weather: a.weather,
+        samples: a.samples,
+        chartsMissing: a.chartsMissing,
+        visibility: visibility,
+        shareHr: shareHr,
+      );
     }
     return null;
   }

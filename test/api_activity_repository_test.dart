@@ -331,4 +331,109 @@ void main() {
       expect(repo.activity('12', viewer: _me), throwsA(isA<DioException>()));
     },
   );
+
+  test(
+    'public link only for a public run/walk, and only with a web origin',
+    () async {
+      Future<List<Activity>> load(String origin) => ApiActivityRepository(
+        Dio()
+          ..httpClientAdapter = FakeAdapter({
+            'GET /me/apps/nubi/activities': (
+              200,
+              {
+                'success': true,
+                'data': {
+                  'activities': [
+                    {...own, 'visibility': 'public'},
+                    {
+                      ...own,
+                      'id': 13,
+                      'startedAt': '2026-10-22T06:00:00Z',
+                      'visibility': 'members',
+                    },
+                    {
+                      ...own,
+                      'id': 14,
+                      'startedAt': '2026-10-23T06:00:00Z',
+                      'visibility': 'public',
+                      'sport': 'ride',
+                    },
+                  ],
+                },
+              },
+            ),
+          }),
+        webOrigin: origin,
+      ).myActivities(user: _me);
+      final links = {
+        for (final a in await load('https://nubi.test')) a.id: a.publicUrl,
+      };
+      expect(links, {'12': 'https://nubi.test/a/12', '13': null, '14': null});
+      expect((await load('')).every((a) => a.publicUrl == null), isTrue);
+    },
+  );
+
+  test(
+    'own feed detail carries visibility + link; setVisibility sends the web\'s body',
+    () async {
+      final adapter = FakeAdapter({
+        'GET /me/apps/nubi/feed/12': (
+          200,
+          {
+            'success': true,
+            'data': {
+              ...own,
+              'own': true,
+              'visibility': 'public',
+              'author': {'name': 'Aina'},
+              'kudos': {'count': 1, 'mine': false},
+            },
+          },
+        ),
+        'PUT /me/apps/nubi/activities/12/visibility': (200, {'success': true}),
+      });
+      final repo = ApiActivityRepository(
+        Dio()..httpClientAdapter = adapter,
+        webOrigin: 'https://nubi.test',
+      );
+      final a = (await repo.activity('12', viewer: _me))!;
+      expect(a.visibility, ActivityVisibility.public);
+      expect(a.publicUrl, 'https://nubi.test/a/12');
+
+      final withRoute = Activity(
+        id: '12',
+        userId: 7,
+        userName: 'Aina',
+        title: 'Run',
+        type: ActivityType.run,
+        startedAt: DateTime(2026),
+        distanceKm: 1,
+        duration: Duration.zero,
+        location: '',
+        latitude: 0,
+        longitude: 0,
+        route: const [GeoPoint(3.07, 101.51), GeoPoint(3.08, 101.52)],
+      );
+      const key = 'PUT /me/apps/nubi/activities/12/visibility';
+      await repo.setVisibility(
+        withRoute,
+        ActivityVisibility.members,
+        shareHr: true,
+      );
+      expect(adapter.bodies[key], {
+        'visibility': 'members',
+        'shareHr': true,
+        'preview': [
+          [3.07, 101.51],
+          [3.08, 101.52],
+        ],
+      });
+      await repo.setVisibility(
+        withRoute,
+        ActivityVisibility.private,
+        shareHr: true,
+      );
+      expect(adapter.bodies[key], {'visibility': 'private', 'shareHr': false});
+    },
+  );
 }

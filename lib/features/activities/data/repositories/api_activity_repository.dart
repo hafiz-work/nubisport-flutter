@@ -14,8 +14,11 @@ import '../fit_records.dart';
 /// The API has no place name, calories or notes. Route, splits and chart streams come from the
 /// owner's shared records (/feed/:id/records), or for own activities from the original .fit.
 class ApiActivityRepository implements ActivityRepository {
-  ApiActivityRepository(this._dio);
+  ApiActivityRepository(this._dio, {this.webOrigin = ''});
   final Dio _dio;
+
+  /// Site origin for public activity links; empty = no links.
+  final String webOrigin;
 
   @override
   Future<List<Activity>> myActivities({required AppUser user}) async {
@@ -42,7 +45,9 @@ class ApiActivityRepository implements ActivityRepository {
       }
     }());
     // Own rows carry no author: the name and id come from the signed-in user.
-    final items = [for (final row in rows) ownFromJson(row, user)];
+    final items = [
+      for (final row in rows) ownFromJson(row, user, webOrigin: webOrigin),
+    ];
     return items..sort((a, b) => b.startedAt.compareTo(a.startedAt));
   }
 
@@ -99,6 +104,7 @@ class ApiActivityRepository implements ActivityRepository {
       return feedFromJson(
         shared,
         viewer,
+        webOrigin: webOrigin,
         records: records.columns,
         recordsMissing: records.missing,
       );
@@ -109,6 +115,7 @@ class ApiActivityRepository implements ActivityRepository {
     return ownFromJson(
       own,
       viewer,
+      webOrigin: webOrigin,
       records: records.columns,
       recordsMissing: records.missing,
     );
@@ -169,6 +176,27 @@ class ApiActivityRepository implements ActivityRepository {
     );
   }
 
+  @override
+  Future<void> setVisibility(
+    Activity activity,
+    ActivityVisibility visibility, {
+    required bool shareHr,
+  }) async {
+    // The feed card map needs a preview; the server keeps its own when none is sent. The members' copy of the
+    // records is built by the server from the .fit on first read (hono-workers services/nubi-feed.ts feedRecords).
+    final preview = visibility == ActivityVisibility.private
+        ? const <List<double>>[]
+        : routePreview(activity.route);
+    await _dio.put<void>(
+      '/me/apps/nubi/activities/${activity.id}/visibility',
+      data: {
+        'visibility': visibility.name,
+        'shareHr': visibility != ActivityVisibility.private && shareHr,
+        if (preview.length >= 2) 'preview': preview,
+      },
+    );
+  }
+
   /// 403 too: a non-member may not read the feed, but can still open their own activity.
   Future<Map<String, dynamic>?> _getOrNull(String path) async {
     try {
@@ -188,6 +216,7 @@ typedef _Records = ({Map<String, dynamic>? columns, String? missing});
 Activity ownFromJson(
   Map<String, dynamic> json,
   AppUser? me, {
+  String webOrigin = '',
   Map<String, dynamic>? records,
   String? recordsMissing,
 }) {
@@ -203,6 +232,7 @@ Activity ownFromJson(
     splits: track?.splits ?? const [],
     samples: track?.samples ?? const [],
     chartsMissing: _chartsMissing(track, recordsMissing),
+    webOrigin: webOrigin,
   );
 }
 
@@ -224,6 +254,7 @@ List<GeoPoint> _preview(Map<String, dynamic> json) => [
 Activity feedFromJson(
   Map<String, dynamic> json,
   AppUser? me, {
+  String webOrigin = '',
   Map<String, dynamic>? records,
   String? recordsMissing,
 }) {
@@ -245,6 +276,7 @@ Activity feedFromJson(
     splits: track?.splits ?? const [],
     samples: track?.samples ?? const [],
     chartsMissing: _chartsMissing(track, recordsMissing),
+    webOrigin: webOrigin,
   );
 }
 
@@ -364,7 +396,15 @@ Activity _activity(
   List<Duration> splits = const [],
   List<ActivitySample> samples = const [],
   String? chartsMissing,
+  String webOrigin = '',
 }) {
+  // Sent for own activities only (/activities rows, and the feed detail when own).
+  final visibility = switch (json['visibility']) {
+    'private' => ActivityVisibility.private,
+    'members' => ActivityVisibility.members,
+    'public' => ActivityVisibility.public,
+    _ => null,
+  };
   final type = switch (json['sport']) {
     'run' => ActivityType.run,
     'walk' => ActivityType.walk,
@@ -392,6 +432,15 @@ Activity _activity(
     splits: splits,
     samples: samples,
     chartsMissing: chartsMissing,
+    visibility: visibility,
+    shareHr: json['shareHr'] == true,
+    // Same rule as the server's public page: run/walk only (anything else would open a 404).
+    publicUrl:
+        webOrigin.isNotEmpty &&
+            visibility == ActivityVisibility.public &&
+            const {'run', 'walk'}.contains(json['sport'])
+        ? '$webOrigin/a/${json['id']}'
+        : null,
     elapsed: Duration(seconds: ((json['elapsedS'] as num?) ?? 0).round()),
     avgHr: (json['avgHr'] as num?)?.round(),
     maxHr: (json['maxHr'] as num?)?.round(),

@@ -8,5 +8,8 @@ import 'mock_activity_repository.dart';
 
 final activityRepositoryProvider = Provider<ActivityRepository>((ref) {
   if (ref.watch(appConfigProvider).isMock) return MockActivityRepository();
-  return ApiActivityRepository(ref.watch(dioProvider));
+  return ApiActivityRepository(
+    ref.watch(dioProvider),
+    webOrigin: ref.watch(appConfigProvider).webOrigin,
+  );
 });

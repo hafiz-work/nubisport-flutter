@@ -1,7 +1,7 @@
 # Activity Sharing — Strava Research & NubiSport Design
 
 **Status:** implemented baseline + roadmap
-**Last checked:** 26 Oct 2026
+**Last checked:** 2 Nov 2026
 
 ---
 
@@ -70,6 +70,8 @@ Details:
 - Selected template is captured through `RepaintBoundary` at pixelRatio 3.
 - PNG is shared with the caption through `share_plus` (native tray).
 - “Salin kapsyen” copies the text.
+- “Save image” / “Save sticker” saves the same 3× PNG to Photos (`gal`; asks for access first, denied = a
+  Settings hint) - the Strava sticker flow: save, then add it as a sticker in an Instagram Story.
 
 ### Someone else’s activity
 
@@ -87,11 +89,11 @@ Details:
 | GPS required for image sharing                   | Route is optional; falls back to icon            | Fine        |
 | Native share tray                                | `share_plus` opens native tray                   | Done        |
 | Transparent Instagram sticker with checkerboard  | Two transparent sticker templates + checkerboard | Done        |
-| Save sticker directly to camera roll             | Native share tray only                           | **Next**    |
-| Copy/share activity link                         | Not available (no public activity URL yet)       | Next        |
+| Save sticker directly to camera roll             | "Save image" / "Save sticker" (`gal`)            | Done        |
+| Copy/share activity link                         | "Copy link" + link in caption (public only)      | Done        |
 | Share icon only on own activities                | `isMine` gate                                    | Done        |
-| Privacy Followers/Everyone                       | No activity privacy model yet                    | Later       |
-| Hide stats/map portions                          | No hidden-data model                             | Later       |
+| Privacy Followers/Everyone                       | Only me / members / public link (detail page)    | Done        |
+| Hide stats/map portions                          | Start/finish 200 m always hidden (`shareRoute`)  | Partial     |
 | Units/language follow app                        | Hardcoded metric/Malay labels                    | Later       |
 | Snapchat/Snap lens                               | None                                             | Not planned |
 
@@ -112,16 +114,18 @@ Details:
 
 ## 5. Next improvements (recommended order)
 
-1. **Save image / sticker to gallery**
-   - Capture the selected template once, then offer `Simpan` and `Kongsi`.
-   - Required for the full Strava sticker flow (save → Instagram Story).
-2. **Activity link**
-   - Define the public activity URL on the web app, then add “Salin pautan” and include it in the caption.
-   - Only for public/followers activities.
+1. ~~**Save image / sticker to gallery**~~ - done 2 Nov 2026 (`saveImageToGallery`, iOS
+   `NSPhotoLibraryAddUsageDescription`, Android `WRITE_EXTERNAL_STORAGE` max SDK 29).
+2. ~~**Activity link**~~ - done 2 Nov 2026: web `/a/<id>` (hono-workers migration 055), set "Pautan awam" on the
+   web activity page; the app shows "Copy link" and adds the link to the caption only for public run/walk.
 3. **Photo support**
    - Add activity photos, then let the user choose Map or Photo as the card background.
-4. **Privacy and hidden data**
-   - Respect hidden stats/map portions in the generated image.
+4. **Privacy and hidden data** - partly done 2 Nov 2026: every share image drops the route's first and last 200 m
+   (`shareRoute`, same rule as the public page); a route too short for that shows no line. Left: per-activity
+   hidden stats (needs a server field).
+   Visibility: done 2 Nov 2026 - own activity detail page, "Visibility" row -> sheet (Only me / Nubi members /
+   Public link + share heart rate), `PUT .../visibility` like the web. No records upload: the server builds the
+   members' copy from the .fit on first read (`feedRecords`).
 5. **Instagram direct handoff**
    - Optional: use the Instagram Stories URL scheme / share extension when installed; otherwise keep the native tray.
 

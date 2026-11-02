@@ -1,5 +1,8 @@
 enum ActivityType { run, walk, hike, ride, other }
 
+/// Who can see an activity: only the owner, Nubi members (feed), or also anyone with the link.
+enum ActivityVisibility { private, members, public }
+
 /// A plain coordinate pair, so the domain does not depend on a map package.
 class GeoPoint {
   const GeoPoint(this.latitude, this.longitude);
@@ -63,6 +66,9 @@ class Activity {
     this.weather,
     this.samples = const [],
     this.chartsMissing,
+    this.publicUrl,
+    this.visibility,
+    this.shareHr = false,
   });
 
   final String id;
@@ -102,6 +108,15 @@ class Activity {
 
   /// Why [samples] is empty (records not found or unreadable); shown in debug builds only.
   final String? chartsMissing;
+
+  /// The web page anyone with the link can open (nubisport `/a/<id>`); null unless the owner made it public.
+  final String? publicUrl;
+
+  /// The owner's sharing setting; null on someone else's activity (the server does not say).
+  final ActivityVisibility? visibility;
+
+  /// Heart rate shown to members / on the public page.
+  final bool shareHr;
 
   Duration get pace {
     if (distanceKm <= 0) return Duration.zero;

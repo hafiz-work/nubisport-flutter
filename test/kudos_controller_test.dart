@@ -29,6 +29,12 @@ class _Repo implements ActivityRepository {
   @override
   Future<Activity?> activity(String id, {AppUser? viewer}) =>
       throw UnimplementedError();
+  @override
+  Future<void> setVisibility(
+    Activity activity,
+    ActivityVisibility visibility, {
+    required bool shareHr,
+  }) => throw UnimplementedError();
 }
 
 final _activity = Activity(

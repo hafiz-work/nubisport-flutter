@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+import 'package:gal/gal.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/theme/app_colors.dart';
@@ -12,25 +13,79 @@ import '../../../../shared/widgets/family_bottom_sheet/family_modal_sheet.dart';
 import '../../domain/models/activity.dart';
 import '../activity_format.dart';
 
+/// Saves PNG bytes to the photo library (asks for permission first). Swapped in tests.
+@visibleForTesting
+Future<void> Function(Uint8List png, String name) saveImageToGallery =
+    (png, name) async {
+      if (!await Gal.hasAccess() && !await Gal.requestAccess()) {
+        throw GalException(
+          type: GalExceptionType.accessDenied,
+          platformException: PlatformException(code: 'ACCESS_DENIED'),
+          stackTrace: StackTrace.current,
+        );
+      }
+      await Gal.putImageBytes(png, name: name);
+    };
+
+/// The route as share images draw it: without its first and last [privacyM] metres, so the start/finish
+/// (often home) is not in the picture - the same rule as the public page (hono-workers nubi-public-activity.ts).
+/// Under 2 points left = empty (no line drawn).
+@visibleForTesting
+List<GeoPoint> shareRoute(List<GeoPoint> route, {double privacyM = 200}) {
+  List<GeoPoint> cut(List<GeoPoint> list) {
+    var walked = 0.0;
+    for (var i = 1; i < list.length; i++) {
+      walked += _metres(list[i - 1], list[i]);
+      if (walked >= privacyM) return list.sublist(i);
+    }
+    return const [];
+  }
+
+  if (route.length < 2) return const [];
+  final kept = cut(cut(route).reversed.toList()).reversed.toList();
+  return kept.length >= 2 ? kept : const [];
+}
+
+double _metres(GeoPoint a, GeoPoint b) {
+  const rad = math.pi / 180;
+  final x =
+      math.pow(math.sin((b.latitude - a.latitude) * rad / 2), 2) +
+      math.cos(a.latitude * rad) *
+          math.cos(b.latitude * rad) *
+          math.pow(math.sin((b.longitude - a.longitude) * rad / 2), 2);
+  return 2 * 6371000 * math.asin(math.sqrt(x));
+}
+
 /// Own activity: Strava-style template picker. Someone else's: a small floating sheet, no templates.
-Future<void> showActivityShareSheet(BuildContext context, Activity activity, {required bool isMine}) {
+Future<void> showActivityShareSheet(
+  BuildContext context,
+  Activity activity, {
+  required bool isMine,
+}) {
   if (!isMine) {
     return FamilyModalSheet.show<void>(
       context: context,
       showDragHandle: true,
-      builder: (sheetContext) => _OtherActivityShareSheet(activity: activity, sheetContext: sheetContext),
+      builder: (sheetContext) => _OtherActivityShareSheet(
+        activity: activity,
+        sheetContext: sheetContext,
+      ),
     );
   }
   return FamilyModalSheet.showMaterialDefault<void>(
     context: context,
     showDragHandle: true,
     isScrollControlled: true,
-    builder: (sheetContext) => _ActivityShareSheet(activity: activity, sheetContext: sheetContext),
+    builder: (sheetContext) =>
+        _ActivityShareSheet(activity: activity, sheetContext: sheetContext),
   );
 }
 
 class _ActivityShareSheet extends StatefulWidget {
-  const _ActivityShareSheet({required this.activity, required this.sheetContext});
+  const _ActivityShareSheet({
+    required this.activity,
+    required this.sheetContext,
+  });
   final Activity activity;
   final BuildContext sheetContext;
 
@@ -45,36 +100,72 @@ class _ActivityShareSheetState extends State<_ActivityShareSheet> {
 
   String get _caption => _shareCaption(widget.activity);
 
+  String get _fileName => 'nubi-${widget.activity.id}-${_template.name}';
+
+  /// The selected template as a 3x PNG (1080 px wide), or null when the card is not laid out.
+  Future<Uint8List?> _capture() async {
+    await WidgetsBinding.instance.endOfFrame;
+    final boundary = _cardKey.currentContext?.findRenderObject();
+    if (boundary is! RenderRepaintBoundary) return null;
+    final image = await boundary.toImage(pixelRatio: 3);
+    final data = await image.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    return data?.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+  }
+
+  void _snack(String text) => ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(text)));
+
   Future<void> _shareImage() async {
     setState(() => _busy = true);
     try {
-      await WidgetsBinding.instance.endOfFrame;
-      final boundary = _cardKey.currentContext?.findRenderObject();
-      if (boundary is! RenderRepaintBoundary) return;
-
-      final image = await boundary.toImage(pixelRatio: 3);
-      final data = await image.toByteData(format: ui.ImageByteFormat.png);
-      image.dispose();
-      if (data == null || !mounted) return;
-
-      final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+      final bytes = await _capture();
+      if (bytes == null || !mounted) return;
       final box = context.findRenderObject() as RenderBox?;
-      final origin = box == null ? null : box.localToGlobal(Offset.zero) & box.size;
+      final origin = box == null
+          ? null
+          : box.localToGlobal(Offset.zero) & box.size;
       await SharePlus.instance.share(
         ShareParams(
           files: [XFile.fromData(bytes, mimeType: 'image/png')],
-          fileNameOverrides: ['nubi-${widget.activity.id}-${_template.name}.png'],
+          fileNameOverrides: ['$_fileName.png'],
           text: _caption,
           subject: widget.activity.title,
           sharePositionOrigin: origin,
         ),
       );
     } catch (_) {
+      if (mounted) _snack('Couldn\'t share image.');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Saves the selected template to Photos - the Strava sticker flow: save, then add it in an Instagram Story.
+  Future<void> _saveImage() async {
+    setState(() => _busy = true);
+    try {
+      final bytes = await _capture();
+      if (bytes == null || !mounted) return;
+      await saveImageToGallery(bytes, _fileName);
       if (mounted) {
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(const SnackBar(content: Text('Couldn\'t share image.')));
+        _snack(
+          _template.transparent
+              ? 'Sticker saved to Photos.'
+              : 'Image saved to Photos.',
+        );
       }
+    } on GalException catch (e) {
+      if (mounted) {
+        _snack(
+          e.type == GalExceptionType.accessDenied
+              ? 'Allow Photos access in Settings to save images.'
+              : 'Couldn\'t save image.',
+        );
+      }
+    } catch (_) {
+      if (mounted) _snack('Couldn\'t save image.');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -82,10 +173,12 @@ class _ActivityShareSheetState extends State<_ActivityShareSheet> {
 
   Future<void> _copyCaption() async {
     await Clipboard.setData(ClipboardData(text: _caption));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: Text('Caption copied.')));
+    if (mounted) _snack('Caption copied.');
+  }
+
+  Future<void> _copyLink() async {
+    await Clipboard.setData(ClipboardData(text: widget.activity.publicUrl!));
+    if (mounted) _snack('Link copied.');
   }
 
   @override
@@ -104,7 +197,12 @@ class _ActivityShareSheetState extends State<_ActivityShareSheet> {
               padding: const EdgeInsets.fromLTRB(20, 0, 8, 8),
               child: Row(
                 children: [
-                  Expanded(child: Text('Share activity', style: theme.textTheme.headlineSmall)),
+                  Expanded(
+                    child: Text(
+                      'Share activity',
+                      style: theme.textTheme.headlineSmall,
+                    ),
+                  ),
                   IconButton(
                     tooltip: 'Close',
                     onPressed: () => Navigator.of(widget.sheetContext).pop(),
@@ -138,7 +236,12 @@ class _ActivityShareSheetState extends State<_ActivityShareSheet> {
                         padding: const EdgeInsets.all(3),
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: selected ? scheme.onSurface : Colors.transparent, width: 3),
+                          border: Border.all(
+                            color: selected
+                                ? scheme.onSurface
+                                : Colors.transparent,
+                            width: 3,
+                          ),
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(11),
@@ -148,7 +251,9 @@ class _ActivityShareSheetState extends State<_ActivityShareSheet> {
                               FittedBox(
                                 child: CustomPaint(
                                   // Checkerboard marks templates that export with a transparent background.
-                                  painter: t.transparent ? const _CheckerPainter() : null,
+                                  painter: t.transparent
+                                      ? const _CheckerPainter()
+                                      : null,
                                   child: RepaintBoundary(
                                     key: selected ? _cardKey : null,
                                     child: t.build(widget.activity),
@@ -159,7 +264,11 @@ class _ActivityShareSheetState extends State<_ActivityShareSheet> {
                                 const Positioned(
                                   top: 8,
                                   right: 8,
-                                  child: Icon(Icons.check_circle, color: Colors.white, size: 22),
+                                  child: Icon(
+                                    Icons.check_circle,
+                                    color: Colors.white,
+                                    size: 22,
+                                  ),
                                 ),
                               Positioned(
                                 left: 8,
@@ -170,7 +279,10 @@ class _ActivityShareSheetState extends State<_ActivityShareSheet> {
                                     borderRadius: BorderRadius.circular(6),
                                   ),
                                   child: Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
                                     child: Text(
                                       t.sizeLabel,
                                       style: const TextStyle(
@@ -204,7 +316,9 @@ class _ActivityShareSheetState extends State<_ActivityShareSheet> {
                     Text(
                       '${_template.label} · ${_template.hint}',
                       textAlign: TextAlign.center,
-                      style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
                     ),
                     const SizedBox(height: 10),
                     SizedBox(
@@ -215,21 +329,46 @@ class _ActivityShareSheetState extends State<_ActivityShareSheet> {
                             ? const SizedBox(
                                 width: 16,
                                 height: 16,
-                                child: CircularProgressIndicator.adaptive(strokeWidth: 2),
+                                child: CircularProgressIndicator.adaptive(
+                                  strokeWidth: 2,
+                                ),
                               )
                             : const Icon(Icons.ios_share, size: 18),
                         label: Text(_busy ? 'Preparing image…' : 'Share image'),
                       ),
                     ),
                     const SizedBox(height: 8),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: _copyCaption,
-                        icon: const Icon(Icons.copy, size: 18),
-                        label: const Text('Copy caption'),
-                      ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _busy ? null : _saveImage,
+                            icon: const Icon(Icons.download, size: 18),
+                            label: Text(
+                              _template.transparent
+                                  ? 'Save sticker'
+                                  : 'Save image',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _copyCaption,
+                            icon: const Icon(Icons.copy, size: 18),
+                            label: const Text('Copy caption'),
+                          ),
+                        ),
+                      ],
                     ),
+                    if (widget.activity.publicUrl != null) ...[
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed: _copyLink,
+                        icon: const Icon(Icons.link, size: 18),
+                        label: const Text('Copy link'),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -246,10 +385,14 @@ String _shareCaption(Activity a) =>
     '${formatDistance(a.distanceKm)} · ${formatDuration(a.duration)} · '
     '${formatPace(a.pace)}/km\n'
     '${a.location}\n'
+    '${a.publicUrl == null ? '' : '${a.publicUrl}\n'}'
     '#NubiSport';
 
 class _OtherActivityShareSheet extends StatelessWidget {
-  const _OtherActivityShareSheet({required this.activity, required this.sheetContext});
+  const _OtherActivityShareSheet({
+    required this.activity,
+    required this.sheetContext,
+  });
   final Activity activity;
   final BuildContext sheetContext;
 
@@ -259,7 +402,9 @@ class _OtherActivityShareSheet extends StatelessWidget {
       ShareParams(
         text: _shareCaption(activity),
         subject: activity.title,
-        sharePositionOrigin: box == null ? null : box.localToGlobal(Offset.zero) & box.size,
+        sharePositionOrigin: box == null
+            ? null
+            : box.localToGlobal(Offset.zero) & box.size,
       ),
     );
   }
@@ -283,7 +428,9 @@ class _OtherActivityShareSheet extends StatelessWidget {
         children: [
           Row(
             children: [
-              Expanded(child: Text('Share to', style: theme.textTheme.titleLarge)),
+              Expanded(
+                child: Text('Share to', style: theme.textTheme.titleLarge),
+              ),
               IconButton(
                 tooltip: 'Close',
                 onPressed: () => Navigator.of(sheetContext).pop(),
@@ -315,7 +462,9 @@ class ActivityShareCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final date = formatActivityDate(activity.startedAt).split(',').first.toUpperCase();
+    final date = formatActivityDate(
+      activity.startedAt,
+    ).split(',').first.toUpperCase();
     return SizedBox(
       width: 360,
       height: 450,
@@ -329,8 +478,16 @@ class ActivityShareCard extends StatelessWidget {
         ),
         child: Stack(
           children: [
-            const Positioned(top: -90, right: -70, child: _Glow(color: AppColors.orange, size: 230)),
-            const Positioned(bottom: -110, left: -90, child: _Glow(color: AppColors.onDark, size: 240)),
+            const Positioned(
+              top: -90,
+              right: -70,
+              child: _Glow(color: AppColors.orange, size: 230),
+            ),
+            const Positioned(
+              bottom: -110,
+              left: -90,
+              child: _Glow(color: AppColors.onDark, size: 240),
+            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
               child: Column(
@@ -342,7 +499,10 @@ class ActivityShareCard extends StatelessWidget {
                         width: 24,
                         height: 24,
                         alignment: Alignment.center,
-                        decoration: BoxDecoration(color: AppColors.orange, borderRadius: BorderRadius.circular(7)),
+                        decoration: BoxDecoration(
+                          color: AppColors.orange,
+                          borderRadius: BorderRadius.circular(7),
+                        ),
                         child: const Text(
                           'N',
                           style: TextStyle(
@@ -400,13 +560,20 @@ class ActivityShareCard extends StatelessWidget {
                               activity.userName,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                             Text(
                               activity.location,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(color: AppColors.onDarkMuted, fontSize: 10),
+                              style: const TextStyle(
+                                color: AppColors.onDarkMuted,
+                                fontSize: 10,
+                              ),
                             ),
                           ],
                         ),
@@ -432,28 +599,49 @@ class ActivityShareCard extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.05),
                         borderRadius: BorderRadius.circular(AppTheme.radius),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.12),
+                        ),
                       ),
                       child: Stack(
                         children: [
                           Positioned.fill(
-                            child: CustomPaint(painter: _ShareRoutePainter(points: activity.route)),
+                            child: CustomPaint(
+                              painter: _ShareRoutePainter(
+                                points: shareRoute(activity.route),
+                              ),
+                            ),
                           ),
-                          if (activity.route.length < 2)
-                            const Center(child: Icon(Icons.route, color: Colors.white24, size: 40)),
+                          if (shareRoute(activity.route).length < 2)
+                            const Center(
+                              child: Icon(
+                                Icons.route,
+                                color: Colors.white24,
+                                size: 40,
+                              ),
+                            ),
                           Positioned(
                             top: 10,
                             left: 10,
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.black.withValues(alpha: 0.35),
-                                borderRadius: BorderRadius.circular(AppTheme.radius),
+                                borderRadius: BorderRadius.circular(
+                                  AppTheme.radius,
+                                ),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(activityIcon(activity.type), size: 12, color: Colors.white),
+                                  Icon(
+                                    activityIcon(activity.type),
+                                    size: 12,
+                                    color: Colors.white,
+                                  ),
                                   const SizedBox(width: 4),
                                   Text(
                                     activityLabel(activity.type).toUpperCase(),
@@ -475,10 +663,22 @@ class ActivityShareCard extends StatelessWidget {
                   const SizedBox(height: 14),
                   Row(
                     children: [
-                      _ShareStat(label: 'DISTANCE', value: formatDistance(activity.distanceKm)),
-                      _ShareStat(label: 'TIME', value: formatDuration(activity.duration)),
-                      _ShareStat(label: 'PACE', value: formatPace(activity.pace)),
-                      _ShareStat(label: 'ELEV', value: '${activity.elevationGainM} m'),
+                      _ShareStat(
+                        label: 'DISTANCE',
+                        value: formatDistance(activity.distanceKm),
+                      ),
+                      _ShareStat(
+                        label: 'TIME',
+                        value: formatDuration(activity.duration),
+                      ),
+                      _ShareStat(
+                        label: 'PACE',
+                        value: formatPace(activity.pace),
+                      ),
+                      _ShareStat(
+                        label: 'ELEV',
+                        value: '${activity.elevationGainM} m',
+                      ),
                     ],
                   ),
                   const SizedBox(height: 12),
@@ -486,7 +686,10 @@ class ActivityShareCard extends StatelessWidget {
                     children: [
                       const Text(
                         'nubisport.hafizbahtiar.com',
-                        style: TextStyle(color: AppColors.onDarkMuted, fontSize: 8.5),
+                        style: TextStyle(
+                          color: AppColors.onDarkMuted,
+                          fontSize: 8.5,
+                        ),
                       ),
                       const Spacer(),
                       const Text(
@@ -563,7 +766,9 @@ class _Glow extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        gradient: RadialGradient(colors: [color.withValues(alpha: 0.16), color.withValues(alpha: 0)]),
+        gradient: RadialGradient(
+          colors: [color.withValues(alpha: 0.16), color.withValues(alpha: 0)],
+        ),
       ),
     );
   }
@@ -630,7 +835,10 @@ class _ShareRoutePainter extends CustomPainter {
 
     final offsets = [
       for (final point in points)
-        Offset(left + (point.longitude - minLng) * scale, top + drawHeight - (point.latitude - minLat) * scale),
+        Offset(
+          left + (point.longitude - minLng) * scale,
+          top + drawHeight - (point.latitude - minLat) * scale,
+        ),
     ];
 
     final path = Path()..moveTo(offsets.first.dx, offsets.first.dy);
@@ -658,7 +866,11 @@ class _ShareRoutePainter extends CustomPainter {
         ..strokeJoin = StrokeJoin.round,
     );
 
-    canvas.drawCircle(offsets.first, 4.5, Paint()..color = const Color(0xFF2EB82E));
+    canvas.drawCircle(
+      offsets.first,
+      4.5,
+      Paint()..color = const Color(0xFF2EB82E),
+    );
     canvas.drawCircle(
       offsets.first,
       4.5,
@@ -683,7 +895,11 @@ class _ShareRoutePainter extends CustomPainter {
 enum ShareTemplate {
   classic('Classic', '4:5 card with a route map and stats.'),
   story('Story', '9:16 format for Instagram / WhatsApp Story.'),
-  statsSticker('Statistik', 'Transparent PNG — place it over your photo.', transparent: true),
+  statsSticker(
+    'Statistik',
+    'Transparent PNG — place it over your photo.',
+    transparent: true,
+  ),
   routeSticker('Route', 'Route only, transparent PNG.', transparent: true),
   bigNumber('Big distance', '1:1 square, distance in a large font.'),
   light('Minimal', '1:1 square on a clean white background.'),
@@ -717,7 +933,11 @@ enum ShareTemplate {
 
 const _shadow = [Shadow(color: Colors.black54, blurRadius: 6)];
 
-TextStyle _display(double size, {Color color = Colors.white, List<Shadow>? shadows}) => TextStyle(
+TextStyle _display(
+  double size, {
+  Color color = Colors.white,
+  List<Shadow>? shadows,
+}) => TextStyle(
   fontFamily: AppTheme.displayFont,
   color: color,
   fontSize: size,
@@ -726,8 +946,17 @@ TextStyle _display(double size, {Color color = Colors.white, List<Shadow>? shado
   shadows: shadows,
 );
 
-TextStyle _caps(double size, {Color color = AppColors.onDarkMuted, List<Shadow>? shadows}) =>
-    TextStyle(color: color, fontSize: size, fontWeight: FontWeight.w700, letterSpacing: 1.2, shadows: shadows);
+TextStyle _caps(
+  double size, {
+  Color color = AppColors.onDarkMuted,
+  List<Shadow>? shadows,
+}) => TextStyle(
+  color: color,
+  fontSize: size,
+  fontWeight: FontWeight.w700,
+  letterSpacing: 1.2,
+  shadows: shadows,
+);
 
 Widget _brand({Color color = Colors.white, List<Shadow>? shadows}) => Text(
   'NUBI SPORT',
@@ -746,7 +975,11 @@ Widget _stack(
   children: [
     Text(
       label,
-      style: _caps(9, color: muted ?? color.withValues(alpha: 0.7), shadows: shadows),
+      style: _caps(
+        9,
+        color: muted ?? color.withValues(alpha: 0.7),
+        shadows: shadows,
+      ),
     ),
     const SizedBox(height: 4),
     FittedBox(
@@ -782,7 +1015,12 @@ class _StoryCard extends StatelessWidget {
         children: [
           _brand(),
           const SizedBox(height: 24),
-          Text(activity.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: _display(38)),
+          Text(
+            activity.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: _display(38),
+          ),
           const SizedBox(height: 6),
           Text(
             '${activity.userName} · ${formatActivityDate(activity.startedAt)}',
@@ -792,7 +1030,10 @@ class _StoryCard extends StatelessWidget {
           ),
           Expanded(
             child: CustomPaint(
-              painter: _ShareRoutePainter(points: activity.route, grid: false),
+              painter: _ShareRoutePainter(
+                points: shareRoute(activity.route),
+                grid: false,
+              ),
               size: Size.infinite,
             ),
           ),
@@ -824,7 +1065,11 @@ class _StatsSticker extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          _stack('DISTANCE', formatDistance(activity.distanceKm), shadows: _shadow),
+          _stack(
+            'DISTANCE',
+            formatDistance(activity.distanceKm),
+            shadows: _shadow,
+          ),
           const SizedBox(height: 20),
           _stack('PACE', '${formatPace(activity.pace)} /km', shadows: _shadow),
           const SizedBox(height: 20),
@@ -851,7 +1096,7 @@ class _RouteSticker extends StatelessWidget {
           Expanded(
             child: CustomPaint(
               painter: _ShareRoutePainter(
-                points: activity.route,
+                points: shareRoute(activity.route),
                 grid: false,
                 line: Colors.white,
                 casing: Colors.black26,
@@ -859,7 +1104,10 @@ class _RouteSticker extends StatelessWidget {
               size: Size.infinite,
             ),
           ),
-          Text(formatDistance(activity.distanceKm), style: _display(40, shadows: _shadow)),
+          Text(
+            formatDistance(activity.distanceKm),
+            style: _display(40, shadows: _shadow),
+          ),
           const SizedBox(height: 6),
           _brand(shadows: _shadow),
           const SizedBox(height: 12),
@@ -887,14 +1135,25 @@ class _BigNumberCard extends StatelessWidget {
             children: [
               Icon(activityIcon(activity.type), color: Colors.white, size: 18),
               const SizedBox(width: 6),
-              Text(activityLabel(activity.type).toUpperCase(), style: _caps(11, color: Colors.white)),
+              Text(
+                activityLabel(activity.type).toUpperCase(),
+                style: _caps(11, color: Colors.white),
+              ),
               const Spacer(),
               _brand(),
             ],
           ),
           const Spacer(),
-          FittedBox(child: Text(activity.distanceKm.toStringAsFixed(2), style: _display(150).copyWith(height: 0.9))),
-          Text('KILOMETERS', style: _caps(14, color: AppColors.navy).copyWith(letterSpacing: 6)),
+          FittedBox(
+            child: Text(
+              activity.distanceKm.toStringAsFixed(2),
+              style: _display(150).copyWith(height: 0.9),
+            ),
+          ),
+          Text(
+            'KILOMETERS',
+            style: _caps(14, color: AppColors.navy).copyWith(letterSpacing: 6),
+          ),
           const Spacer(),
           FittedBox(
             fit: BoxFit.scaleDown,
@@ -938,7 +1197,12 @@ class _LightCard extends StatelessWidget {
           ),
           Expanded(
             child: CustomPaint(
-              painter: _ShareRoutePainter(points: activity.route, grid: false, line: AppColors.ink, casing: null),
+              painter: _ShareRoutePainter(
+                points: shareRoute(activity.route),
+                grid: false,
+                line: AppColors.ink,
+                casing: null,
+              ),
               size: Size.infinite,
             ),
           ),
@@ -953,8 +1217,20 @@ class _LightCard extends StatelessWidget {
                 muted: AppColors.muted,
                 size: 22,
               ),
-              _stack('TIME', formatDuration(activity.duration), color: AppColors.ink, muted: AppColors.muted, size: 22),
-              _stack('PACE', formatPace(activity.pace), color: AppColors.ink, muted: AppColors.muted, size: 22),
+              _stack(
+                'TIME',
+                formatDuration(activity.duration),
+                color: AppColors.ink,
+                muted: AppColors.muted,
+                size: 22,
+              ),
+              _stack(
+                'PACE',
+                formatPace(activity.pace),
+                color: AppColors.ink,
+                muted: AppColors.muted,
+                size: 22,
+              ),
             ].map((w) => Flexible(child: w)).toList(),
           ),
         ],
@@ -979,7 +1255,11 @@ class _PosterCard extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: CustomPaint(
-                painter: _ShareRoutePainter(points: activity.route, grid: false, casing: null),
+                painter: _ShareRoutePainter(
+                  points: shareRoute(activity.route),
+                  grid: false,
+                  casing: null,
+                ),
                 size: Size.infinite,
               ),
             ),
@@ -990,7 +1270,12 @@ class _PosterCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(activity.title.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis, style: _display(28)),
+                Text(
+                  activity.title.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _display(28),
+                ),
                 const SizedBox(height: 8),
                 Row(
                   children: [
@@ -1023,7 +1308,12 @@ class _ReceiptCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const mono = TextStyle(fontFamily: 'monospace', color: AppColors.ink, fontSize: 13, height: 1.5);
+    const mono = TextStyle(
+      fontFamily: 'monospace',
+      color: AppColors.ink,
+      fontSize: 13,
+      height: 1.5,
+    );
     Widget line(String k, String v) => Row(
       children: [
         Text(k, style: mono),
@@ -1031,7 +1321,12 @@ class _ReceiptCard extends StatelessWidget {
         Text(v, style: mono),
       ],
     );
-    const dash = Text('- - - - - - - - - - - - - - - - - - -', style: mono, maxLines: 1, overflow: TextOverflow.clip);
+    const dash = Text(
+      '- - - - - - - - - - - - - - - - - - -',
+      style: mono,
+      maxLines: 1,
+      overflow: TextOverflow.clip,
+    );
 
     return Container(
       width: 360,
@@ -1040,8 +1335,14 @@ class _ReceiptCard extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
       child: Column(
         children: [
-          Text('NUBI SPORT', style: mono.copyWith(fontSize: 20, fontWeight: FontWeight.w700)),
-          Text(formatActivityDate(activity.startedAt), style: mono.copyWith(fontSize: 11)),
+          Text(
+            'NUBI SPORT',
+            style: mono.copyWith(fontSize: 20, fontWeight: FontWeight.w700),
+          ),
+          Text(
+            formatActivityDate(activity.startedAt),
+            style: mono.copyWith(fontSize: 11),
+          ),
           const SizedBox(height: 8),
           dash,
           line('ACTIVITY', activityLabel(activity.type).toUpperCase()),
@@ -1071,7 +1372,10 @@ class _CheckerPainter extends CustomPainter {
     final b = Paint()..color = const Color(0xFF2A2E35);
     for (var y = 0.0; y < size.height; y += cell) {
       for (var x = 0.0; x < size.width; x += cell) {
-        canvas.drawRect(Rect.fromLTWH(x, y, cell, cell), ((x + y) / cell).round().isEven ? a : b);
+        canvas.drawRect(
+          Rect.fromLTWH(x, y, cell, cell),
+          ((x + y) / cell).round().isEven ? a : b,
+        );
       }
     }
   }
